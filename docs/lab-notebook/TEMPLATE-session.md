@@ -80,3 +80,85 @@ Do not mix Type A and Type B in one session.
 ## Follow-ups
 
 - [ ]
+
+---
+
+# Calibration session addendum
+
+> Extra fields for a **first calibration session** — see
+> `docs/CALIBRATION-SESSION.md`. Delete this block for ordinary sessions.
+
+## Ear assignment
+
+| Field | Value |
+|---|---|
+| Implant ear | left / right |
+| Hearing aid ear | left / right |
+| Verified against the generated files? | yes / no |
+
+⚠️ If this is wrong the experiment is inverted and the data will still look
+normal. Confirm before analysing anything.
+
+## Part 1 — Loudness balance
+
+Present in shuffled order, not as a sweep.
+
+| Order played | File (offset dB) | Centred / pulls left / pulls right | How strongly (1–5) |
+|---|---|---|---|
+| 1 | | | |
+| 2 | | | |
+| 3 | | | |
+| 4 | | | |
+| 5 | | | |
+| 6 | | | |
+| 7 | | | |
+
+**Balance offset chosen:** ______ dB on the implant side
+
+**Confidence in it:** clear / approximate / never centred
+
+> If it never centred, say which way it always pulled. That is a finding, not a
+> failed session — it means the offset range needs widening.
+
+## Part 2 — Presentation mode
+
+| Mode | Could tell them apart? | Felt like two sounds or one? | Ease (1–5) |
+|---|---|---|---|
+| Simultaneous | | | |
+| Alternating | | | |
+| Sequential | | | |
+
+**Preferred mode:** ______
+
+**Did simultaneous cause fusion — "one sound" rather than two?** yes / no / unsure
+
+> This is the key question of the session. If yes, simultaneous presentation
+> cannot be used for fitting no matter how pleasant it is, because she would be
+> reporting on a merged percept rather than comparing its parts.
+
+## Part 3 — Vocabulary (optional)
+
+Verbatim quotes describing how the two halves differed. Exact wording, including
+hedges and self-corrections. Do not translate into technical terms.
+
+>
+>
+
+## Session conditions
+
+| Field | Value |
+|---|---|
+| Playback volume setting | |
+| Streaming path | Bluetooth from phone |
+| Both devices paired and synchronised? | yes / no |
+| Audiogram last done | |
+| Alertness at start (1–5) | |
+| Alertness at end (1–5) | |
+| Stopped early? Why? | |
+
+## What went wrong
+
+> Confusing questions, fatigue points, anything unexpected. This shapes the next
+> session more than the clean results do.
+
+>
