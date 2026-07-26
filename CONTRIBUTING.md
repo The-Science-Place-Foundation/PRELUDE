@@ -112,6 +112,39 @@ Simulator and processing parameters belong in YAML, not in module-level constant
 parameter a researcher might reasonably want to sweep must be reachable from a config file
 and must appear in `SimulatorConfig.hash()`, so that results remain attributable.
 
+## Review before changing
+
+Two review agents live in `.claude/agents/`. Both are steps, not suggestions.
+
+**`prelude-code-review`** — before applying any change, and especially a change
+made in response to a suspected bug. Its first job is not to review the fix but
+to check whether the bug is real. The costly failures on this project have all
+been correct-looking fixes to misdiagnosed problems.
+
+**`audiology-review`** — before acting on any interpretation of listener data,
+and before changing anything a listener will experience. Its job is to argue
+against the interpretation, not confirm it.
+
+### Verify the diagnosis before writing the fix
+
+When something looks wrong, establish these before changing code:
+
+- **What does the number actually measure?** Read the code that *produces* it,
+  not only the code that consumes it. A field's meaning can change while its name
+  does not.
+- **Can the instrument resolve what it is being asked about?** A measure that
+  smooths away the thing being varied reports "no difference" indistinguishably
+  from "identical".
+- **What else would produce this observation?** If the fix does not distinguish
+  between the candidates, it is a guess.
+
+### Simulate anything a listener will experience
+
+Adaptive procedures, staircases, termination rules — run them against a synthetic
+responder and check trial count and accuracy before deployment. Two calibration
+procedures shipped here broken in ways a few minutes of simulation would have
+caught, and were fixed only after the listener had run them twice.
+
 ## Pull requests
 
 - One logical change per PR.

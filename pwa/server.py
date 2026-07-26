@@ -27,6 +27,7 @@ protects on a single-user LAN.
 
 from __future__ import annotations
 
+import hashlib
 import itertools
 import json
 import math
@@ -51,6 +52,20 @@ PORT = int(os.environ.get("PRELUDE_PORT", "8080"))
 MAX_TRIALS = 40
 
 SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
+
+#: Shortest credible deliberation, in milliseconds.
+#:
+#: ``response_ms`` is measured from the moment PLAYBACK FINISHES, not from when
+#: the trial appeared - the page locks its buttons until both candidates have
+#: played, so the timer starts when there is something to judge. A listener who
+#: knows what they are listening for decides in a second or two, and that is a
+#: good response, not a suspicious one.
+#:
+#: This threshold therefore catches only a stray tap landing on a freshly
+#: enabled control. An earlier version of this guard compared deliberation time
+#: against the audio duration and would have rejected every genuine response in
+#: the study.
+MIN_DELIBERATION_MS = 250
 
 #: Discrimination sharpness in the choice model. Higher means judgements are
 #: treated as more reliable. Calibrate from catch-trial performance: a listener
@@ -179,6 +194,28 @@ def _persist(sess: dict) -> None:
         pass
 
 
+def _asset_version(name: str) -> str:
+    """Content hash of a static asset, used to bust caches on change."""
+    f = APP_DIR / name
+    if not f.is_file():
+        return "0"
+    return hashlib.sha256(f.read_bytes()).hexdigest()[:8]
+
+
+def _shell() -> bytes:
+    """index.html with asset URLs stamped by content hash.
+
+    Without this an installed PWA can hold a stale script indefinitely. It did:
+    a fix that locked the choice buttons until playback finished was live on the
+    server for forty minutes before a session that ignored it entirely, because
+    the phone was still running the previous copy.
+    """
+    html = (APP_DIR / "index.html").read_text()
+    for asset in ("app.js", "style.css"):
+        html = html.replace(f'"/{asset}"', f'"/{asset}?v={_asset_version(asset)}"')
+    return html.encode()
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -246,10 +283,15 @@ def _next_trial(sess: dict) -> dict | None:
 
     order = [0, 1]
     rng.shuffle(order)
+    dur_a = cands[a].get("duration_s", 0.0)
+    dur_b = cands[b].get("duration_s", 0.0)
     trial = {
         "trial_id": uuid.uuid4().hex[:10],
         "index": n,
         "is_catch": is_catch,
+        # Both candidates play in sequence, so this is the floor for a response
+        # that involved listening.
+        "audio_ms": int((dur_a + dur_b) * 1000),
         "a_idx": a, "b_idx": b,
         "options": [cands[a]["file"], cands[b]["file"]],
         "presentation_order": order,
@@ -289,6 +331,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         self._send(200, path.read_bytes(), ctype, {"Cache-Control": cache})
+
+    def do_HEAD(self):  # noqa: N802 - stdlib signature
+        self.do_GET()
 
     # -------------------------------------------------------------------- GET
     def do_GET(self):  # noqa: N802 - stdlib signature
@@ -333,12 +378,24 @@ class Handler(BaseHTTPRequestHandler):
         # Static app. Unknown paths fall through to the shell so the PWA can
         # own its own routing.
         rel = route.lstrip("/") or "index.html"
+        # The shell is generated, not served raw: it carries the asset version
+        # stamps. Serving the file directly would bypass that and leave every
+        # other asset pinned to whatever a cached copy referenced.
+        if rel == "index.html":
+            self._send(200, _shell(), "text/html", {"Cache-Control": "no-store"})
+            return
         candidate = (APP_DIR / rel).resolve()
         if APP_DIR.resolve() in candidate.parents or candidate == APP_DIR.resolve():
             if candidate.is_file():
-                self._file(candidate, "no-cache")
+                # Assets are requested with a content-hash query, so they are
+                # safe to cache forever; a change produces a different URL.
+                cache = ("public, max-age=31536000, immutable"
+                         if self.path.find("?v=") > 0 else "no-store")
+                self._file(candidate, cache)
                 return
-        self._file(APP_DIR / "index.html", "no-cache")
+        # The shell is never cached. It carries the asset versions, so a stale
+        # copy pins every other file to whatever it referenced.
+        self._send(200, _shell(), "text/html", {"Cache-Control": "no-store"})
 
     # ------------------------------------------------------------------- POST
     def do_POST(self):  # noqa: N802 - stdlib signature
@@ -362,15 +419,22 @@ class Handler(BaseHTTPRequestHandler):
             chose = payload.get("chose")               # 0, 1, or "same"
             trial = next((t for t in sess["trials"]
                           if t["trial_id"] == payload.get("trial_id")), None)
+
+            # Only a stray tap is rejected. The response is still recorded -
+            # discarding data silently is worse than keeping it flagged.
+            too_fast = (payload.get("response_ms") or 0) < MIN_DELIBERATION_MS
             rec = {
                 "trial_id": payload.get("trial_id"),
                 "chose": chose,
                 "response_ms": payload.get("response_ms"),
                 "at": _now(),
             }
+            rec["too_fast"] = too_fast
             # Resolve the blinded choice back to candidate indices. The page is
             # never told which card is which; that mapping lives only here.
-            if trial and isinstance(chose, int) and not trial["is_catch"]:
+            # Skipped when the response beat the audio: without indices the
+            # posterior cannot use it.
+            if trial and isinstance(chose, int) and not trial["is_catch"] and not too_fast:
                 shown = [trial["a_idx"], trial["b_idx"]]
                 picked = shown[trial["presentation_order"][chose]]
                 other = shown[trial["presentation_order"][1 - chose]]
@@ -410,6 +474,12 @@ class Handler(BaseHTTPRequestHandler):
             if not sess:
                 self._json(404, {"error": "unknown session"})
                 return
+
+            usable = sum(1 for r in sess["responses"]
+                         if r.get("chose_idx") is not None)
+            discarded = sum(1 for r in sess["responses"] if r.get("too_fast"))
+            sess["usable_responses"] = usable
+            sess["discarded_too_fast"] = discarded
             post = _posterior(sess)
             if post:
                 top = max(range(len(post)), key=lambda i: post[i])
@@ -417,7 +487,12 @@ class Handler(BaseHTTPRequestHandler):
                 sess["fit"] = {
                     "best_candidate": pool["candidates"][top]["name"],
                     "probability": round(post[top], 4),
-                    "converged": post[top] >= 0.80,
+                    # Convergence needs enough judgements to have earned it. A
+                    # high posterior over a handful of responses is an artefact
+                    # of which pairs happened to be asked.
+                    "converged": post[top] >= 0.80 and usable >= 12,
+                    "usable_responses": usable,
+                    "discarded_too_fast": discarded,
                     "posterior": [round(p, 4) for p in post],
                 }
             sess["complete"] = True
