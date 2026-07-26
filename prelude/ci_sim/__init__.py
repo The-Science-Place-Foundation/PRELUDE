@@ -31,7 +31,7 @@ from .filterbank import (
 from .interaction import apply_interaction, effective_channels, spread_matrix
 from .mapping import LoudnessMap, apply_loudness_map, invert_loudness_map
 from .pipeline import SimulationResult, SimulatorConfig, simulate
-from .resynthesis import resynthesise
+from .resynthesis import pulse_carrier, resynthesise
 from .selection import select_n_of_m, selection_stability
 
 __all__ = [
@@ -50,6 +50,7 @@ __all__ = [
     "greenwood_position",
     "greenwood_space",
     "invert_loudness_map",
+    "pulse_carrier",
     "resynthesise",
     "select_n_of_m",
     "selection_stability",

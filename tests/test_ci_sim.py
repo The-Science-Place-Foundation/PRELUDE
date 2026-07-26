@@ -28,6 +28,7 @@ from prelude.ci_sim import (
     greenwood_frequency,
     greenwood_position,
     invert_loudness_map,
+    pulse_carrier,
     resynthesise,
     select_n_of_m,
     simulate,
@@ -296,3 +297,62 @@ class TestResynthesis:
         fb = design_filterbank(SR, 4, 300, 4000)
         with pytest.raises(ValueError, match="unknown carrier"):
             resynthesise(np.ones((4, 100)), fb, carrier="square")
+
+    def test_pulse_carrier_requires_rate(self):
+        fb = design_filterbank(SR, 4, 300, 4000)
+        with pytest.raises(ValueError, match="requires rate_hz"):
+            resynthesise(np.ones((4, 100)), fb, carrier="pulse")
+
+
+class TestPulseCarrier:
+    """Pulsatile stimulation - what real devices actually deliver."""
+
+    def test_pulse_count_matches_stimulation_rate(self):
+        rate, dur = 900.0, 1.0
+        p = pulse_carrier(4, int(SR * dur), rate, SR, synchronization=1.0)
+        for ch in p:
+            assert abs(np.count_nonzero(ch) - rate * dur) / (rate * dur) < 0.05
+
+    def test_channels_are_interleaved(self):
+        """Adjacent electrodes must not fire simultaneously.
+
+        Simultaneous stimulation sums in the cochlea; avoiding it is what the
+        "interleaved" in Continuous Interleaved Sampling refers to.
+        """
+        p = pulse_carrier(8, SR, 900.0, SR, synchronization=1.0)
+        first = [np.flatnonzero(ch)[0] for ch in p]
+        assert len(set(first)) == len(first), "channels fire at the same instant"
+
+    def test_synchronization_zero_is_noise_like(self):
+        """At sync 0 the carrier degenerates to noise, per the physiology."""
+        pulsed = pulse_carrier(4, SR, 900.0, SR, synchronization=1.0,
+                               rng=np.random.default_rng(0))
+        noisy = pulse_carrier(4, SR, 900.0, SR, synchronization=0.0,
+                              rng=np.random.default_rng(0))
+        assert np.count_nonzero(pulsed) < 0.1 * pulsed.size
+        assert np.count_nonzero(noisy) > 0.9 * noisy.size
+
+    def test_charge_is_approximately_balanced(self):
+        """Alternating pulse signs approximate the charge balance devices require."""
+        p = pulse_carrier(4, SR, 900.0, SR, synchronization=1.0)
+        for ch in p:
+            assert abs(ch.sum()) <= 1.0
+
+    def test_rejects_rate_above_sample_rate(self):
+        with pytest.raises(ValueError, match="too high for sample rate"):
+            pulse_carrier(4, 1000, 20000.0, SR)
+
+    def test_rejects_out_of_range_synchronization(self):
+        with pytest.raises(ValueError, match=r"\[0, 1\]"):
+            pulse_carrier(4, 1000, 900.0, SR, synchronization=1.5)
+
+    def test_pipeline_accepts_pulse_carrier(self, speech_like):
+        r = simulate(speech_like, SR, SimulatorConfig(
+            n_channels=12, n_selected=12, carrier="pulse",
+            stimulation_rate_hz=900.0, synchronization=1.0, seed=0))
+        assert np.all(np.isfinite(r.audio))
+        assert r.audio.shape == speech_like.shape
+
+    def test_config_rejects_bad_synchronization(self):
+        with pytest.raises(ValueError, match=r"\[0, 1\]"):
+            SimulatorConfig(synchronization=2.0)

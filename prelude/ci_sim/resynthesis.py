@@ -30,11 +30,85 @@ import numpy as np
 from .filterbank import Filterbank
 
 
+def pulse_carrier(
+    n_channels: int,
+    n_samples: int,
+    rate_hz: float,
+    sample_rate: int,
+    synchronization: float = 1.0,
+    rng: np.random.Generator | None = None,
+) -> np.ndarray:
+    """Interleaved biphasic-style pulse trains, one per channel.
+
+    Real devices stimulate with discrete pulses at a fixed rate, not with
+    continuous noise. How faithfully the auditory nerve follows those pulses
+    varies between listeners and is the physiological quantity
+    ``synchronization`` models: at 1.0 neural activity locks tightly to the
+    stimulus, at 0.0 it is essentially random and the percept is noise-like.
+
+    Pulses are **interleaved** across channels - each channel's train is offset
+    by a fraction of the pulse period - because simultaneous stimulation on
+    adjacent electrodes would sum in the cochlea. Avoiding that is what the
+    "interleaved" in Continuous Interleaved Sampling refers to.
+
+    Parameters
+    ----------
+    rate_hz:
+        Stimulation rate per channel, in pulses per second.
+    synchronization:
+        0.0 gives white noise, 1.0 gives exact pulse timing, and intermediate
+        values jitter pulse positions. Below roughly 800 pps real devices show
+        unwanted neural synchronisation artefacts, which this does not model.
+
+    Returns
+    -------
+    np.ndarray
+        Shape ``(n_channels, n_samples)``, unnormalised. Band-limit it through
+        the analysis filterbank before use, which turns each impulse into that
+        channel's impulse response - physically what a pulse on one electrode
+        does.
+    """
+    if not 0.0 <= synchronization <= 1.0:
+        raise ValueError(f"synchronization must be in [0, 1], got {synchronization}")
+    if rate_hz <= 0:
+        raise ValueError(f"rate_hz must be positive, got {rate_hz}")
+    if rng is None:
+        rng = np.random.default_rng()
+
+    period = sample_rate / rate_hz
+    if period < 2.0:
+        raise ValueError(
+            f"stimulation rate {rate_hz} Hz is too high for sample rate "
+            f"{sample_rate} Hz; pulses would be less than 2 samples apart"
+        )
+
+    pulses = np.zeros((n_channels, n_samples))
+    jitter = (1.0 - synchronization) * period / 2.0
+
+    for ch in range(n_channels):
+        # Interleave: stagger each channel by a fraction of the pulse period.
+        offset = period * ch / n_channels
+        idx = np.arange(offset, n_samples, period)
+        if jitter > 0:
+            idx = idx + rng.uniform(-jitter, jitter, size=idx.shape)
+        idx = np.clip(np.round(idx).astype(int), 0, n_samples - 1)
+        # Alternate sign, approximating charge-balanced biphasic pulses.
+        np.add.at(pulses[ch], idx, np.where(np.arange(len(idx)) % 2, -1.0, 1.0))
+
+    if synchronization < 1.0:
+        noise = rng.standard_normal((n_channels, n_samples))
+        pulses = synchronization * pulses + (1.0 - synchronization) * noise
+
+    return pulses
+
+
 def resynthesise(
     env: np.ndarray,
     filterbank: Filterbank,
     carrier: str = "noise",
     rng: np.random.Generator | None = None,
+    rate_hz: float | None = None,
+    synchronization: float = 1.0,
 ) -> np.ndarray:
     """Resynthesise audio from channel envelopes.
 
@@ -90,8 +164,23 @@ def resynthesise(
                 for f, p in zip(filterbank.center_freqs, phase, strict=True)
             ]
         )
+    elif carrier == "pulse":
+        if rate_hz is None:
+            raise ValueError("carrier='pulse' requires rate_hz (the stimulation rate)")
+        carriers = filterbank.apply_multi(
+            pulse_carrier(
+                n_channels,
+                n_samples,
+                rate_hz,
+                filterbank.sample_rate,
+                synchronization=synchronization,
+                rng=rng,
+            )
+        )
     else:
-        raise ValueError(f"unknown carrier {carrier!r}; use 'noise' or 'tone'")
+        raise ValueError(
+            f"unknown carrier {carrier!r}; use 'noise', 'tone' or 'pulse'"
+        )
 
     return (env * _unit_rms(carriers)).sum(axis=0)
 

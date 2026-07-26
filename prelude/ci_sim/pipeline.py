@@ -76,7 +76,14 @@ class SimulatorConfig:
     interaction_decay_db:
         Current spread falloff per channel of separation. Larger is more focused.
     carrier:
-        ``"noise"`` or ``"tone"``.
+        ``"noise"``, ``"tone"`` or ``"pulse"``. Real devices stimulate with
+        discrete pulses; ``"pulse"`` models that and is the faithful choice when
+        reproducing a device. ``"noise"`` is the classical vocoder used
+        throughout the intelligibility literature.
+    synchronization:
+        How tightly neural activity follows the stimulus, in [0, 1]. Applies to
+        the pulse carrier only: 1.0 is exact pulse timing, 0.0 degenerates to
+        noise. Models auditory-nerve health, which varies between listeners.
     seed:
         Seed for the noise carrier, for reproducible output.
     """
@@ -96,6 +103,7 @@ class SimulatorConfig:
     interaction_decay_db: float = 8.0
 
     carrier: str = "noise"
+    synchronization: float = 1.0
     seed: int | None = None
 
     apply_selection: bool = True
@@ -110,6 +118,10 @@ class SimulatorConfig:
             )
         if self.stimulation_rate_hz <= 0:
             raise ValueError("stimulation_rate_hz must be positive")
+        if not 0.0 <= self.synchronization <= 1.0:
+            raise ValueError(
+                f"synchronization must be in [0, 1], got {self.synchronization}"
+            )
 
     def hash(self) -> str:
         """Short stable hash of the configuration, for artifact provenance.
@@ -237,7 +249,14 @@ def simulate(
     )
 
     rng = np.random.default_rng(config.seed)
-    audio = resynthesise(acoustic, fb, carrier=config.carrier, rng=rng)
+    audio = resynthesise(
+        acoustic,
+        fb,
+        carrier=config.carrier,
+        rng=rng,
+        rate_hz=config.stimulation_rate_hz,
+        synchronization=config.synchronization,
+    )
 
     return SimulationResult(
         audio=audio,
