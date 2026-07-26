@@ -98,11 +98,16 @@ def test_matches_reference_spectrum(name, source, reference, config_path):
 
     n = min(len(result.audio), len(ref.samples))
 
-    def lta_spectrum(x):
+    def lta_spectrum(x, bins: int = 64):
         spec = np.abs(np.fft.rfft(x[:n]))
         spec = spec / (spec.sum() + 1e-12)
-        # Coarse bins; fine structure differs by construction between carriers.
-        return spec[: len(spec) // 1].reshape(-1, 64).mean(axis=1) if len(spec) >= 64 else spec
+        if len(spec) < bins:
+            return spec
+        # Coarse bins; fine structure differs by construction between carriers,
+        # so comparing at full resolution would measure the carrier, not the
+        # spectral shape. Truncate to a whole number of bins before reshaping.
+        usable = (len(spec) // bins) * bins
+        return spec[:usable].reshape(bins, -1).mean(axis=1)
 
     a, b = lta_spectrum(result.audio), lta_spectrum(ref.samples)
     m = min(len(a), len(b))

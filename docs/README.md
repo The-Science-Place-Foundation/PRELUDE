@@ -12,6 +12,7 @@
 
 **[lab-notebook/](lab-notebook/)** — dated experiment logs
 - [TEMPLATE-session.md](lab-notebook/TEMPLATE-session.md) — copy for each listening session
+- [2026-07-25](lab-notebook/2026-07-25-reference-simulator-comparison.md) — first external-reference comparison; one defect found, headline disagreement unresolved
 
 ---
 

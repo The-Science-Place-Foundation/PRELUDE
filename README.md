@@ -90,11 +90,12 @@ prelude-simulate input.wav -o simulated.wav --channels 22 --selected 8
 ```
 
 The simulator reproduces the field's most robust qualitative result — fidelity
-falls as channel count falls:
+falls as channel count falls (mean per-band envelope correlation with the
+source, on a speech sample):
 
 | Configuration | Envelope correlation with source |
 |---|---|
-| CIS, 22 channels | 0.84 |
+| CIS, 22 channels | 0.83 |
 | ACE, 8 of 22 | 0.75 |
 | CIS, 4 channels | 0.63 |
 
@@ -169,6 +170,15 @@ The simulator currently models a *generic* implant. Manufacturer-specific
 frequency allocation tables, T/C levels, and front-end processing are supported
 by the configuration format but are not bundled — supply your own via
 `config/device_profile.yaml`.
+
+**The simulator has not yet been validated against an external reference.** It is
+internally consistent, passes its behavioural test suite, and reproduces the
+channel-count/fidelity relationship that defines CI simulation — all necessary
+conditions, none sufficient. A first comparison against an independent
+implementation showed substantial disagreement that is not yet explained; the
+investigation is written up in
+[`docs/lab-notebook/2026-07-25-reference-simulator-comparison.md`](docs/lab-notebook/2026-07-25-reference-simulator-comparison.md).
+Do not treat simulator output as an accurate model of any real device.
 
 ## Contributing
 

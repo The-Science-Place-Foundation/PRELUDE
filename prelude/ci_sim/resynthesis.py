@@ -93,4 +93,36 @@ def resynthesise(
     else:
         raise ValueError(f"unknown carrier {carrier!r}; use 'noise' or 'tone'")
 
-    return (env * carriers).sum(axis=0)
+    return (env * _unit_rms(carriers)).sum(axis=0)
+
+
+def _unit_rms(carriers: np.ndarray, eps: float = 1e-12) -> np.ndarray:
+    """Scale each carrier to unit RMS.
+
+    This is not cosmetic. Band-limited white noise has RMS proportional to the
+    square root of its bandwidth, and a cochleotopic filterbank's bands widen
+    steeply towards the base - with Greenwood spacing over 300-8500 Hz, the most
+    basal band is around fifty times wider than the most apical one. Modulating
+    un-normalised carriers therefore weights each channel by its bandwidth rather
+    than by its envelope, tilting the output heavily towards high frequencies.
+
+    The requirement follows from what an envelope means. For output band ``i`` to
+    carry the same energy as input band ``i``, we need
+    ``rms(env_i * c_i) ~= rms(band_i)``. Since ``rms(env_i * c_i)`` is roughly
+    ``rms(env_i) * rms(c_i)``, the carrier RMS must be a constant independent of
+    the band. Leaving it proportional to bandwidth weights every channel by how
+    wide it happens to be.
+
+    Measured effect, against an external reference simulator on a speech sample:
+    energy above 4 kHz fell from 0.375 to 0.070 of the total (the source itself
+    has 0.163), and the mean absolute log-distance between the output and
+    reference band-energy profiles improved from 0.55 to 0.39.
+
+    Note that per-band envelope *correlation* with that reference did not improve
+    (0.65 to 0.64). The two measures answer different questions - one asks where
+    the energy sits, the other how it moves over time - and the remaining
+    disagreement with that reference is unresolved. See
+    ``docs/lab-notebook/`` for the investigation.
+    """
+    rms = np.sqrt((carriers**2).mean(axis=-1, keepdims=True))
+    return carriers / (rms + eps)
