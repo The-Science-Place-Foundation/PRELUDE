@@ -125,4 +125,16 @@ close to them. Treat that with the seriousness it deserves.
 
 ## Licence
 
-Contributions are accepted under the [Apache License 2.0](LICENSE).
+Contributions are accepted under the
+[GNU Affero General Public License v3.0](LICENSE).
+
+By submitting a pull request you agree that your contribution is licensed under
+the AGPL-3.0, and that you have the right to license it — check with your
+employer or institution if you are contributing in a work capacity, as many have
+policies covering copyleft contributions.
+
+The AGPL is a deliberate choice. It keeps the toolkit usable by anyone, including
+commercially and in for-profit clinical settings, while ensuring that
+improvements come back to the community rather than disappearing into a
+proprietary product. If you build something on PRELUDE and distribute it — or run
+it as a hosted service — your changes must be open too.

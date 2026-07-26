@@ -15,8 +15,8 @@ authors:
   - name: "The Science Place Foundation"
     website: "https://scienceplacefoundation.org"
   - name: "The PRELUDE contributors"
-license: Apache-2.0
-repository-code: "https://github.com/YOUR-ORG/prelude"
+license: AGPL-3.0-or-later
+repository-code: "https://github.com/The-Science-Place-Foundation/PRELUDE"
 url: "https://scienceplacefoundation.org"
 keywords:
   - cochlear implant

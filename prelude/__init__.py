@@ -1,3 +1,8 @@
+# PRELUDE - cochlear implant audio simulation and pre-processing.
+# Copyright (C) The Science Place Foundation and the PRELUDE contributors.
+# Licensed under the GNU Affero General Public License v3.0 or later.
+# See the LICENSE file, or <https://www.gnu.org/licenses/>.
+
 """PRELUDE - Pre-Rendering for Enhanced Listening Under Degraded Encoding.
 
 An open-source toolkit for cochlear implant audio simulation and pre-processing
@@ -26,7 +31,8 @@ Safety: any signal that may reach a human ear must pass through
 :func:`prelude.audio.loudness.prepare_for_playback` first.
 
 Developed by The Science Place Foundation, a 501(c)(3) nonprofit, and released
-under the Apache License 2.0. See https://scienceplacefoundation.org
+under the GNU Affero General Public License v3.0.
+See https://scienceplacefoundation.org
 """
 
 __version__ = "0.1.0.dev0"

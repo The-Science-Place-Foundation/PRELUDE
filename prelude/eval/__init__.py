@@ -1,3 +1,8 @@
+# PRELUDE - cochlear implant audio simulation and pre-processing.
+# Copyright (C) The Science Place Foundation and the PRELUDE contributors.
+# Licensed under the GNU Affero General Public License v3.0 or later.
+# See the LICENSE file, or <https://www.gnu.org/licenses/>.
+
 """Objective metrics — for rationing scarce listening time, not replacing it.
 
 Not yet implemented. Planned measures, computed on the electrodogram rather than

@@ -1,3 +1,8 @@
+# PRELUDE - cochlear implant audio simulation and pre-processing.
+# Copyright (C) The Science Place Foundation and the PRELUDE contributors.
+# Licensed under the GNU Affero General Public License v3.0 or later.
+# See the LICENSE file, or <https://www.gnu.org/licenses/>.
+
 """Tests for the CI simulation pipeline.
 
 Several of these encode defects found in this project's predecessor. They are

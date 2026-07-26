@@ -5,7 +5,7 @@
 An open-source research toolkit for **cochlear implant audio simulation and
 pre-processing**.
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#project-status)
 
@@ -54,7 +54,7 @@ true-peak limiting are enforced, not optional. See [Safety](#safety).
 ## Install
 
 ```bash
-git clone https://github.com/YOUR-ORG/prelude.git
+git clone https://github.com/The-Science-Place-Foundation/PRELUDE.git
 cd prelude
 pip install -e ".[dev,viz]"
 pytest
@@ -210,8 +210,29 @@ If PRELUDE contributes to published work, please cite it — see
 
 ## Licence
 
-Apache License 2.0 — see [LICENSE](LICENSE). Apache-2.0 was chosen over a
-permissive MIT-style licence for its explicit patent grant, which matters in a
-field as patent-dense as hearing devices.
+**GNU Affero General Public License v3.0** — see [LICENSE](LICENSE).
+
+This is a strong copyleft licence, chosen deliberately. In plain terms:
+
+- **You must give credit.** Copyright and licence notices have to be retained.
+- **You may use this for anything**, including commercially and in clinical
+  settings — there is no field-of-use restriction, because excluding
+  manufacturer-funded and for-profit clinical research would exclude much of the
+  field this work is meant to serve.
+- **Derivatives must stay open.** If you modify PRELUDE and distribute it, your
+  modifications must be released under the AGPL as well.
+- **Network use counts as distribution.** If you run a modified version as a
+  hosted service, you must offer its source to the users of that service. This is
+  what distinguishes the AGPL from the ordinary GPL, and it closes the loophole
+  whereby a company builds on the work and never ships a binary.
+
+The intent is that nobody can take this work, build a proprietary product on top
+of it, and give nothing back — while keeping the toolkit genuinely open for
+researchers, clinicians, and implant users.
+
+Apache-2.0 has a patent grant that the AGPL lacks in equivalent form, which is a
+real consideration in a patent-dense field. The AGPL's §11 does include a patent
+grant from contributors, but it is narrower. Contributions are accepted on the
+basis that contributors licence their own patent claims accordingly.
 
 Copyright © The Science Place Foundation and the PRELUDE contributors.
