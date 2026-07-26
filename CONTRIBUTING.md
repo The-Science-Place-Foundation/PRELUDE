@@ -1,5 +1,9 @@
 # Contributing to PRELUDE
 
+PRELUDE is a project of [The Science Place Foundation](https://scienceplacefoundation.org),
+a 501(c)(3) nonprofit, released as open source for the audiology and hearing-research
+community.
+
 Contributions are welcome — code, documentation, domain corrections, and experimental
 results alike.
 

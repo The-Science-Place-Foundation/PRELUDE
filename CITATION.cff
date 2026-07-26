@@ -12,9 +12,12 @@ abstract: >-
   research into pre-processing recorded audio so that more of the
   original survives transmission through an implant.
 authors:
+  - name: "The Science Place Foundation"
+    website: "https://scienceplacefoundation.org"
   - name: "The PRELUDE contributors"
 license: Apache-2.0
 repository-code: "https://github.com/YOUR-ORG/prelude"
+url: "https://scienceplacefoundation.org"
 keywords:
   - cochlear implant
   - audiology

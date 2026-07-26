@@ -176,6 +176,21 @@ Contributions are very welcome, particularly from audiologists, CI users, and
 hearing researchers. Domain corrections are as valuable as code. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## About
+
+PRELUDE is developed by **[The Science Place Foundation](https://scienceplacefoundation.org)**,
+a 501(c)(3) nonprofit, and released as open source for the audiology and hearing-research
+community.
+
+The project began as an attempt to solve a specific problem for one bimodal cochlear
+implant user: recorded music and audiobooks, streamed to an implant, sound markedly worse
+than the same material heard acoustically. That problem is not specific to one person, and
+neither is the approach. The toolkit is built to be useful to any researcher or clinician
+working on cochlear implant audio.
+
+If you are working in this area and PRELUDE is missing something you need, please open an
+issue — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Acknowledgements
 
 This work builds on the noise-vocoder simulation method introduced by
@@ -188,8 +203,15 @@ Simulation** package from the *Universidad de Granada* (de la Torre Vega et al.,
 built on **Malcolm Slaney's Auditory Toolbox**. Neither is redistributed here;
 PRELUDE is an independent implementation of published methods.
 
+## Citation
+
+If PRELUDE contributes to published work, please cite it — see
+[CITATION.cff](CITATION.cff), which GitHub renders as a "Cite this repository" link.
+
 ## Licence
 
 Apache License 2.0 — see [LICENSE](LICENSE). Apache-2.0 was chosen over a
 permissive MIT-style licence for its explicit patent grant, which matters in a
 field as patent-dense as hearing devices.
+
+Copyright © The Science Place Foundation and the PRELUDE contributors.
