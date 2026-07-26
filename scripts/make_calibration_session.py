@@ -44,11 +44,21 @@ SR = 20000
 
 
 def synth_source(seconds: float = 6.0, sample_rate: int = SR) -> np.ndarray:
-    """A short synthetic phrase: a repeating melodic figure with clear onsets.
+    """A short synthetic phrase: a repeating figure with clear onsets.
 
-    Chosen over speech deliberately - it has unambiguous pitch and rhythm, so a
-    listener can describe what changed without needing words for phonetics, and
-    it contains no one's voice.
+    **Prefer real speech via ``--source`` where possible.** The first
+    calibration session with this synthetic figure surfaced two problems that
+    are worth recording here rather than rediscovering:
+
+    Sustained tonal stimuli are a poor choice for listeners with hearing loss:
+    they can provoke or interact with tinnitus, which contaminates exactly the
+    localisation judgement a balance task measures. And a cochlear implant
+    renders resonance as buzzing, so a resonant stimulus is both uncomfortable
+    and a weak probe.
+
+    Notes here therefore decay fast and carry broadband onsets rather than
+    ringing. It remains a fallback: speech is the better stimulus for balance
+    work, and it is what listeners find easiest to judge.
     """
     t = np.arange(int(seconds * sample_rate)) / sample_rate
     notes = [262, 330, 392, 523, 392, 330]  # C E G C G E
@@ -59,8 +69,12 @@ def synth_source(seconds: float = 6.0, sample_rate: int = SR) -> np.ndarray:
         n = stop - start
         local = np.arange(n) / sample_rate
         tone = sum(np.sin(2 * np.pi * f * k * local) / k for k in (1, 2, 3, 4))
-        env = np.exp(-3.0 * local / note_len) * (1 - np.exp(-200 * local))
-        out[start:stop] = tone * env
+        # Fast decay and a short noise transient at onset: less ringing, so less
+        # resonance for the implant to turn into buzzing.
+        env = np.exp(-12.0 * local / note_len) * (1 - np.exp(-400 * local))
+        rng = np.random.default_rng(i)
+        click = rng.standard_normal(n) * np.exp(-300 * local) * 0.3
+        out[start:stop] = tone * env + click
     return out / (np.abs(out).max() + 1e-12) * 0.5
 
 

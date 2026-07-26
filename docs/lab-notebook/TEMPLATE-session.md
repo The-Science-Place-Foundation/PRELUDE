@@ -112,6 +112,19 @@ Present in shuffled order, not as a sweep.
 | 5 | | | |
 | 6 | | | |
 | 7 | | | |
+| 8 (repeat of #2) | | | |
+| 9 (repeat of #5) | | | |
+| 10 (repeat of #7) | | | |
+
+> **Repeat at least three offsets**, unannounced, as trials 8-10. Without repeats
+> there is no way to tell a real balance point from a noisy one, and the answers
+> will look equally confident either way.
+>
+> **Sanity check before trusting the result:** sorted by offset, the reported
+> position should move steadily from left to right. If it jumps around - if a
+> more-negative offset is reported further right than a less-negative one - the
+> stimulus or the listener's state is fighting the task, and the chosen offset is
+> not supported however clear any single answer felt.
 
 **Balance offset chosen:** ______ dB on the implant side
 
@@ -122,11 +135,15 @@ Present in shuffled order, not as a sweep.
 
 ## Part 2 — Presentation mode
 
-| Mode | Could tell them apart? | Felt like two sounds or one? | Ease (1–5) |
+| Mode | Could tell them apart? | Felt like two sounds or one? | Ease (1 = easiest, 5 = hardest) |
 |---|---|---|---|
 | Simultaneous | | | |
 | Alternating | | | |
 | Sequential | | | |
+
+> Anchor the scale out loud before asking: **1 means easiest, 5 means hardest.**
+> An unanchored 1–5 is ambiguous in both directions and the answers cannot be
+> compared across sessions afterwards.
 
 **Preferred mode:** ______
 

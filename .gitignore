@@ -84,3 +84,4 @@ Thumbs.db
 # which device, which is participant information and stays local.
 calibration/
 sessions/
+calibration_speech/

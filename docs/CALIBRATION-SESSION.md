@@ -68,6 +68,10 @@ always pulls — that itself is a finding, and means we need a wider range.
 
 ---
 
+minus_3db:
+minus_6db:
+minus_9db:
+
 ## Part 2 — Presentation mode (about 10 minutes)
 
 > ⚠️ **The `mode_*.wav` files play different audio to each ear on purpose.**
