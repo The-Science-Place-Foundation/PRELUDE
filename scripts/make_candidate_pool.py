@@ -35,8 +35,11 @@ Usage
 from __future__ import annotations
 
 import argparse
+import hashlib
 import itertools
 import json
+import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 from prelude.audio import Audio, load_audio, save_audio
@@ -98,10 +101,54 @@ def candidate_configs() -> list[tuple[str, SimulatorConfig]]:
     # A few distant options kept deliberately, so the fit can still be pulled
     # away if the anchor turns out to be wrong. Without these the pool could
     # only ever confirm its own starting point.
-    for n in (6, 12, 16):
+    for n in (6, 8, 12, 16):
         out.append((f"ch{n:02d}", SimulatorConfig(**{**anchor, "n_channels": n, "n_selected": n})))
 
+    # Retained because the listener has already been asked about them.
+    # Dropping a configuration that appears in a recorded judgement orphans
+    # that judgement: it can no longer be scored against the pool, and the
+    # listening time that produced it is simply lost. Candidates may be added
+    # freely; removing one has a cost paid in someone else's evenings.
+    out.append(("maxima4", SimulatorConfig(**{**anchor, "n_selected": 4})))
+    out.append(("carrier_pulse_loose",
+                SimulatorConfig(**{**anchor, "carrier": "pulse", "synchronization": 0.5})))
+
     return out
+
+
+def _archive_existing(out: Path) -> None:
+    """Move any existing pool aside instead of overwriting it.
+
+    **A pool is not scratch output.** It is the reference every recorded
+    judgement points at: a session stores which candidates were compared, so
+    discarding the pool discards the meaning of the sessions scored against it.
+    Regenerating over the top of one already orphaned four of five real
+    judgements from a listener who does not have unlimited evenings.
+
+    Archives are never pruned. They are small next to what they protect.
+    """
+    if not out.exists() or not any(out.iterdir()):
+        return
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    dest = out.parent / "archive" / f"{out.name}-{stamp}"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(out), str(dest))
+    print(f"archived the previous pool to {dest}")
+
+
+def _config_id(cfg: SimulatorConfig) -> str:
+    """Short stable hash of the parameters that determine what is heard.
+
+    Two candidates with the same id are the same sound regardless of what
+    either pool called them, which is what lets a judgement recorded against
+    one pool be scored against another.
+    """
+    keys = ("n_channels", "n_selected", "carrier", "stimulation_rate_hz",
+            "envelope_cutoff_hz", "interaction_decay_db", "synchronization",
+            "low_freq", "high_freq", "spacing")
+    g = vars(cfg)
+    blob = json.dumps({k: g.get(k) for k in keys}, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()[:10]
 
 
 def main() -> int:
@@ -121,6 +168,7 @@ def main() -> int:
     args = ap.parse_args()
 
     out = args.output
+    _archive_existing(out)
     out.mkdir(parents=True, exist_ok=True)
     assignment = EarAssignment(implant_ear=Ear(args.implant_ear))
 
@@ -144,6 +192,10 @@ def main() -> int:
         save_audio(out / fname, Audio(d.samples, SR))
         entries.append({
             "index": i, "name": name, "file": fname,
+            # Identity follows the configuration, not the label. Names are for
+            # humans and get edited; a recorded judgement has to stay
+            # resolvable when they do.
+            "config_id": _config_id(cfg),
             "config": {k: v for k, v in vars(cfg).items()},
             "duration_s": round(d.duration_s, 2),
         })

@@ -92,3 +92,8 @@ calibration_speech/
 # PWA runtime data - stimuli and session records live on the server
 pwa/data/
 pool/
+
+# Generated pools and their archives. Never deleted - a pool is the reference
+# every recorded judgement points at, so discarding one discards the meaning
+# of the sessions scored against it.
+archive/
