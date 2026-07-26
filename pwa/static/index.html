@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Prelude</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0B0910">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Prelude">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<main id="stage">
+
+  <!-- Threshold -->
+  <section class="view" id="v-threshold" data-view="threshold">
+    <div class="moon" aria-hidden="true"><i id="moonFill"></i><u></u></div>
+    <h1 class="display" id="moonName">The waxing half</h1>
+    <p class="quiet" id="moonNote">Loading&hellip;</p>
+    <div class="rule"></div>
+    <button class="brass" id="beginBtn">Sit for a while</button>
+    <button class="plain" id="laterBtn">Not tonight</button>
+    <p class="foot"><span id="lenNote">Ten minutes</span> &middot; Stop anytime</p>
+  </section>
+
+  <!-- Setting aside -->
+  <section class="view hidden" id="v-ritual" data-view="ritual">
+    <div class="glyph" aria-hidden="true">&#9790;</div>
+    <h1 class="display sm">Set the left aside.<br>Let the quiet settle.</h1>
+    <p class="quiet">Only the implant for this part. What you hear now is the
+      thing we are trying to describe.</p>
+    <div class="rule"></div>
+    <p class="settle" id="settleNote">Settling &middot; 0:30</p>
+    <button class="brass" id="settleBtn" disabled>Ready</button>
+  </section>
+
+  <!-- Comparison -->
+  <section class="view hidden" id="v-trial" data-view="trial">
+    <p class="quiet narrow">Which one rings truer to what your implant makes
+      of it?</p>
+
+    <div class="pair">
+      <button class="arcana" id="cardA">
+        <span class="sigil" aria-hidden="true">&#10023;</span>
+        <span class="nm">The first</span>
+      </button>
+      <button class="arcana" id="cardB">
+        <span class="sigil" aria-hidden="true">&#10022;</span>
+        <span class="nm">The second</span>
+      </button>
+    </div>
+
+    <div class="ears" aria-hidden="true">
+      <span><i class="dot" id="dotL"></i>Left</span>
+      <span><i class="dot" id="dotR"></i>Right</span>
+    </div>
+
+    <button class="brass" id="listenBtn">Listen</button>
+    <button class="plain" id="sameBtn">They feel the same to me</button>
+    <p class="foot" id="trialFoot">&nbsp;</p>
+    <button class="plain tiny" id="stopBtn">Enough for tonight</button>
+  </section>
+
+  <!-- Enough -->
+  <section class="view hidden" id="v-done" data-view="done">
+    <div class="glyph" aria-hidden="true">&#10023;</div>
+    <h1 class="display sm" id="doneTitle">That&rsquo;s enough for tonight.</h1>
+    <p class="quiet" id="doneNote"></p>
+    <div class="rule"></div>
+    <p class="quiet italic brass-text">Nothing needs doing with this. It keeps.</p>
+    <button class="plain" id="closeBtn">Close</button>
+  </section>
+
+  <!-- Trouble -->
+  <section class="view hidden" id="v-trouble" data-view="trouble">
+    <div class="glyph" aria-hidden="true">&#9789;</div>
+    <h1 class="display sm">Not tonight, then.</h1>
+    <p class="quiet" id="troubleNote">The companion can&rsquo;t reach its
+      library just now. It will still be here later.</p>
+    <div class="rule"></div>
+    <button class="brass" id="retryBtn">Try again</button>
+  </section>
+
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

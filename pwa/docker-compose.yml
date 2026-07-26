@@ -1,0 +1,29 @@
+# PRELUDE listening companion - home network only.
+#
+# Joins the existing BlackMesa-VLAN ipvlan network with a fixed address, so
+# the app is reachable at http://192.168.1.210:8080 from the house without
+# publishing a port on the host or touching the router.
+#
+# NOT exposed to the internet, and deliberately has no authentication: a
+# single listener on a LAN, and a login screen on something opened while
+# tired at the end of a day would cost more than it protects.
+services:
+  prelude:
+    build: .
+    container_name: prelude
+    restart: unless-stopped
+    networks:
+      BlackMesa-VLAN:
+        ipv4_address: 192.168.1.210
+    volumes:
+      # Stimuli in, session records out. Both live beside the compose file on
+      # the host and are gitignored - session records are health information
+      # and must not reach the public repository.
+      - ./data/audio:/data/audio:ro
+      - ./data/sessions:/data/sessions
+    environment:
+      TZ: America/Chicago
+
+networks:
+  BlackMesa-VLAN:
+    external: true

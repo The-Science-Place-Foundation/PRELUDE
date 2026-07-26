@@ -1,0 +1,135 @@
+/* PRELUDE listening companion.
+   Copyright (C) The Science Place Foundation and the PRELUDE contributors.
+   Licensed under the GNU Affero General Public License v3.0 or later.
+
+   Dark by default and by intention: sessions happen in the evening, when
+   spare attention exists. A light clinical ground would be exactly wrong for
+   the task and the hour. */
+
+:root{
+  --ink:#0B0910; --umbra:#16121F; --penumbra:#1F1A2B;
+  --amethyst:#8B6FB0; --amethyst-dim:#5D4A78;
+  --brass:#B08D57; --brass-lit:#D4B078;
+  --bone:#E8E2D9; --haze:#8E839F; --whisper:#5A5168;
+  --rule:rgba(139,111,176,.22);
+  --card:linear-gradient(174deg,#1D1729 0%,#141020 100%);
+  --stage:radial-gradient(120% 80% at 50% -8%,#221B33 0%,#0B0910 62%);
+  --serif:'Iowan Old Style','Palatino Linotype',Baskerville,Georgia,serif;
+  --ui:ui-sans-serif,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,monospace;
+}
+:root[data-theme="light"]{
+  --ink:#EDE6DA; --umbra:#F5F0E7; --penumbra:#E4DBCC;
+  --amethyst:#6B4E92; --amethyst-dim:#9B87B8;
+  --brass:#8A6A34; --brass-lit:#6F5426;
+  --bone:#241E2E; --haze:#5F5568; --whisper:#8B8194;
+  --rule:rgba(107,78,146,.28);
+  --card:linear-gradient(174deg,#FBF7F0 0%,#EFE7DA 100%);
+  --stage:radial-gradient(120% 80% at 50% -8%,#FBF6EC 0%,#E7DFD2 62%);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--stage);color:var(--bone);
+  font-family:var(--ui);line-height:1.55;-webkit-font-smoothing:antialiased;
+  /* No accidental zoom or text selection mid-tap. */
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
+  overscroll-behavior:none;
+}
+
+#stage{
+  min-height:100%;min-height:100dvh;
+  display:flex;align-items:center;justify-content:center;
+  padding:max(28px,env(safe-area-inset-top)) 24px max(28px,env(safe-area-inset-bottom));
+}
+
+.view{
+  width:100%;max-width:400px;
+  display:flex;flex-direction:column;align-items:center;text-align:center;gap:18px;
+  animation:rise .6s cubic-bezier(.2,.7,.3,1) both;
+}
+.view.hidden{display:none}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+.display{
+  font-family:var(--serif);font-weight:400;font-size:31px;line-height:1.16;
+  letter-spacing:-.015em;margin:0;text-wrap:balance;
+}
+.display.sm{font-size:23px;line-height:1.34}
+.quiet{color:var(--haze);font-size:14px;margin:0;max-width:32ch}
+.quiet.narrow{max-width:25ch}
+.quiet.italic{font-family:var(--serif);font-style:italic;font-size:15px}
+.brass-text{color:var(--brass)}
+.rule{width:38px;height:1px;background:var(--rule)}
+.glyph{font-family:var(--serif);font-size:36px;color:var(--amethyst);line-height:1}
+.settle{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--whisper);margin:0}
+.foot{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--whisper);margin:6px 0 0}
+
+/* The moon is the only progress there is. It fills across weeks and
+   cannot be hurried, which is true of the data and keeps the interface
+   from pressing against the fatigue limit. */
+.moon{width:98px;height:98px;border-radius:50%;position:relative;
+  background:var(--penumbra);border:1px solid var(--rule);overflow:hidden;
+  box-shadow:0 0 46px -10px rgba(139,111,176,.5)}
+.moon i{position:absolute;inset:0;border-radius:50%;display:block;
+  background:radial-gradient(60% 60% at 34% 30%,var(--brass-lit),var(--brass) 60%,var(--amethyst-dim));
+  clip-path:inset(0 50% 0 0);transition:clip-path 1.4s cubic-bezier(.3,.7,.3,1)}
+.moon u{position:absolute;inset:0;border-radius:50%;text-decoration:none;
+  box-shadow:inset 0 0 26px rgba(0,0,0,.5)}
+
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:14px;width:100%}
+.arcana{
+  aspect-ratio:3/4.3;border-radius:14px;background:var(--card);
+  border:1px solid var(--rule);position:relative;color:var(--bone);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;font:inherit;padding:0;cursor:pointer;
+  transition:transform .35s cubic-bezier(.2,.7,.3,1),border-color .35s;
+}
+.arcana::after{content:"";position:absolute;inset:7px;border-radius:9px;
+  border:1px solid var(--rule);opacity:.5;pointer-events:none}
+.arcana:active{transform:scale(.98)}
+.arcana:focus-visible{outline:2px solid var(--amethyst);outline-offset:3px}
+.arcana .sigil{font-family:var(--serif);font-size:30px;color:var(--brass);line-height:1}
+.arcana .nm{font-family:var(--mono);font-size:10px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--haze)}
+.arcana.sounding{border-color:var(--brass);animation:breathe 3.6s ease-in-out infinite}
+.arcana[disabled]{opacity:.42;cursor:default}
+@keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(176,141,87,0)}
+                   50%{box-shadow:0 0 30px -4px rgba(176,141,87,.5)}}
+
+.ears{display:flex;gap:16px;font-family:var(--mono);font-size:9.5px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--whisper)}
+.ears span{display:flex;align-items:center;gap:6px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--whisper);
+  opacity:.3;transition:all .25s}
+.dot.on{background:var(--brass);opacity:1;box-shadow:0 0 10px var(--brass)}
+
+.brass{
+  background:none;border:1px solid var(--brass);color:var(--brass-lit);
+  font-family:var(--serif);font-size:16.5px;padding:14px 36px;border-radius:999px;
+  cursor:pointer;transition:background .3s,color .3s,opacity .3s;min-height:48px;
+}
+.brass:active{background:var(--brass);color:var(--ink)}
+.brass:focus-visible{outline:2px solid var(--amethyst);outline-offset:3px}
+.brass[disabled]{opacity:.35;cursor:default}
+
+.plain{
+  background:none;border:none;color:var(--haze);font-family:var(--serif);
+  font-style:italic;font-size:15px;cursor:pointer;padding:11px 6px;min-height:44px;
+  border-bottom:1px solid transparent;transition:color .3s,border-color .3s;
+}
+.plain:active{color:var(--bone)}
+.plain:focus-visible{outline:2px solid var(--amethyst);outline-offset:3px}
+.plain.tiny{font-size:12.5px;opacity:.55;margin-top:2px}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+@media (max-height:640px){
+  .moon{width:76px;height:76px}
+  .display{font-size:26px}
+  .view{gap:14px}
+}
