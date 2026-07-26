@@ -2,10 +2,11 @@
 
 Three things this session settles, in priority order:
 
-1. **Is the implant percept layered or substituted?** An architectural question
-   about the simulator that no amount of parameter tuning can answer.
+1. **Does the audio path keep the ears separate?** Everything else depends on
+   it, and a path that mixes them still sounds perfectly plausible.
 2. **The loudness balance** between the two ears.
-3. **Which presentation mode** lets the listener compare most easily.
+3. **Vocabulary** for describing the implant percept.
+4. **Which presentation mode** lets the listener compare most easily.
 
 **Time:** 25 minutes including breaks. **Equipment:** the listener's phone, both devices,
 nothing else.
@@ -81,39 +82,25 @@ carry anything else in this session. Nothing later would mean anything.
 ## Part 1 — What the implant alone sounds like (5 minutes)
 
 > **Condition: IMPLANT ONLY. Take the hearing aid out.**
-> Allow about 30 seconds for their hearing to settle before playing anything.
-
-**This is the highest-value part of the session. Do it while they are fresh.**
+> Allow about 30 seconds for hearing to settle before playing anything.
 
 Play the **plain source file** — the ordinary speech recording, not a dichotic
-file. Then ask:
+file — and ask:
 
 > Describe what this sounds like now, in your own words.
 
-Let them answer fully before asking the second question:
+The purpose is **vocabulary**. There is no established language for describing
+electric hearing, so the listener's own becomes the measurement language for the
+project. When a later session produces "too buzzy" or "not sparkly enough", we
+need to already know what those map to.
 
-> Is the original sound still there underneath, with something added on top of
-> it? Or has it been replaced by something else entirely?
+It has to be the implant-only condition. With both devices in, the acoustic ear
+contributes to whatever is described, and the description is then about the
+combination rather than the implant.
 
-### Why this question is load-bearing
-
-The simulator is built on a **vocoder**, which *replaces* the fine structure of a
-sound: the original is gone, substituted by noise or pulses shaped by its
-envelope. If their percept is instead the original *plus* an added layer, the
-architecture is wrong in a way no parameter fitting can reach — because a vocoder
-does not retain the original to layer anything onto.
-
-**It can only be answered with the hearing aid out.** With both devices in, the
-acoustic ear supplies an audible "original underneath" regardless of what the
-implant does, so the answer is determined before the question is asked. A previous
-session made exactly this mistake, and the result was uninterpretable.
-
-### Recording it
-
-Write their **exact wording**, including hedges and self-corrections. Do not
+Record **exact wording**, including hedges and self-corrections. Do not
 paraphrase into technical language — *"like a wasp in a tin can"* is better data
-than *"high-frequency distortion"*. There is no established vocabulary for
-electric hearing, so theirs becomes the measurement language for this project.
+than *"high-frequency distortion"*.
 
 ---
 
@@ -228,7 +215,7 @@ Copy `docs/lab-notebook/TEMPLATE-session.md` to
 
 Must be recorded or the session cannot be used:
 
-1. **Their exact words from Part 1**, and whether they said layered or replaced.
+1. **Their exact words from Part 1**, verbatim.
 2. **The balance offset**, plus the repeat trials, so monotonicity can be checked.
 3. **Playback volume setting**, and confirmation it was played **locally from the
    phone**.
