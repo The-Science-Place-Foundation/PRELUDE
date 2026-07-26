@@ -70,18 +70,37 @@ vocoder model this simulator is built on. A vocoder *substitutes* temporal fine
 structure; it cannot produce "original plus overlay", because it does not retain
 the original.
 
-There is a more mundane explanation: the description was collected in the
-**bimodal** condition, so the audible "background" may simply be the
-contralateral acoustic ear. That would make the layering real but external to the
-implant.
+**But the observation cannot bear that weight, and the fault is in the protocol.**
+The guide specified "both devices in" for the earlier parts and gave Part 3 no
+condition at all, so the description was collected bimodally by instruction. In
+that condition the acoustic ear supplies an audible "original underneath"
+regardless of what the implant does — so the answer was determined before the
+question was asked. This says nothing yet about the implant.
 
-**The two readings are distinguishable.** Repeat the description task in
-**CI-only**. If layering persists with the contralateral device removed, it is a
-property of the implant percept and the simulator's architecture needs revisiting
-— which no amount of parameter fitting would reach.
+The guide now specifies a listening condition for **every** part, and splits the
+vocabulary task in two: comparing the halves of a dichotic file (both devices,
+where the comparison lives) and describing the implant percept (**implant only**,
+which is the only condition that can answer the architecture question).
 
-Recorded here because it is the kind of finding that is easy to note, hard to
-act on, and expensive to rediscover later.
+Recorded here because the failure mode generalises: a protocol that does not
+state a condition inherits the previous one silently, and the resulting data
+looks entirely normal.
+
+### A second confound, same root cause
+
+The session was played through a **network audio relay** rather than from the
+phone. The guide named the phone only in a line of script output and never said
+"do not use a relay", so this was a reasonable reading of ambiguous instructions.
+
+Resampling, buffering and packet loss sit on top of the Bluetooth codec, and the
+participant remarked on artefacts during the session. A listener cannot separate
+"this simulation is wrong" from "this playback is glitching", so every judgement
+carries the ambiguity. The mode comparison is partially salvageable — all three
+modes went through the same path, so the *relative* ranking is more robust than
+any absolute statement — but it should be confirmed on a clean path before being
+relied on.
+
+The guide now states the playback requirement up front, with the reason.
 
 ## Also worth noting
 

@@ -27,6 +27,15 @@ python scripts/make_calibration_session.py --implant-ear right -o calibration/
 
 Copy the `calibration/` folder to her phone.
 
+**Play the files from the phone itself. Do not use a network relay.**
+
+SonoBus, AirPlay and similar add resampling, buffering and packet loss on top of
+the Bluetooth codec. Those artefacts are audible, and a listener cannot separate
+"this simulation is wrong" from "this playback is glitching" — so every judgement
+in the session becomes ambiguous. Copy the folder to the phone and play it
+locally. A relay is fine for listening to music while you work; it is not fine
+for a measurement.
+
 **Set the volume before anything else.** Play `balance_plus_0dB.wav` at her
 normal listening level and leave the volume there for the whole session. Every
 comparison assumes a fixed playback level; changing it mid-session invalidates
@@ -40,12 +49,14 @@ are both real, useful answers — in fact they're often the most informative one
 
 ## Part 1 — Loudness balance (about 8 minutes)
 
+**Condition: BOTH DEVICES.** Correct here — the task is balancing one against
+the other, which requires both.
+
 Electric and acoustic hearing have very different loudness growth. Matching both
 channels to the same measured level does **not** make them equally loud to her.
 Until this is calibrated, every later judgement is partly a judgement about which
 side is louder.
 
-**Condition: both devices in.**
 
 Play the seven `balance_*.wav` files. Each has the same sound in both ears, with
 the implant side offset by a known amount.
@@ -74,6 +85,9 @@ minus_9db:
 
 ## Part 2 — Presentation mode (about 10 minutes)
 
+**Condition: BOTH DEVICES.** Correct here — the dichotic comparison needs one
+signal in each ear.
+
 > ⚠️ **The `mode_*.wav` files play different audio to each ear on purpose.**
 >
 > The implanted ear gets the ordinary melody. The acoustic ear gets a **CI
@@ -84,7 +98,6 @@ minus_9db:
 >
 > This reads as a fault if you are not expecting it. Say so before playing them.
 
-**Condition: both devices in.**
 
 ### 2a. Practice — identical audio in both ears
 
@@ -130,21 +143,47 @@ hundred trials.
 
 ---
 
-## Part 3 — Vocabulary (optional, 5 minutes, only if she has energy)
+## Part 3 — Vocabulary (10 minutes)
 
-Skip this if Parts 1 and 2 were tiring. It is the least time-critical part.
+Two sub-parts, in **different listening conditions**. This matters: a judgement
+made while wearing both devices is not a readout of the implant, because the
+acoustic ear fills in what the implant misses. Ask the wrong question in the
+wrong condition and the answer is uninterpretable.
 
-Play `mode_sequential.wav` and ask her to describe, in her own words, how the
-two halves differ. Write down her **exact wording**, including hedges and
-self-corrections.
+### 3a. Comparing the two halves — **both devices in**
 
-This matters more than it looks. There is no established vocabulary for
-describing electric hearing, so hers becomes the measurement language for the
-whole project. If she says a simulation is "too buzzy" or "not sparkly enough",
-we need to know what those map to in her experience before we can act on them.
+Play `mode_sequential.wav`. Ask how the two halves differ.
 
-Do not paraphrase into technical terms while recording. "Sounds like a wasp in a
-tin can" is better data than "high-frequency distortion".
+This builds vocabulary for the *comparison* task she will do repeatedly later. It
+cannot tell you what the implant alone sounds like, because both ears are active.
+
+### 3b. What the implant alone sounds like — **IMPLANT ONLY**
+
+> **Take the hearing aid out.** Allow ~30 seconds for hearing to settle.
+
+Play the plain source file — the unprocessed audio, not a dichotic file — and ask:
+
+> Describe what this sounds like now, in your own words.
+
+Then, specifically:
+
+> Is the original sound still there underneath, with something added on top of
+> it? Or has it been replaced by something else entirely?
+
+**This question is load-bearing.** The simulator is built on a vocoder, which
+*replaces* the fine structure of a sound: the original is gone, substituted by
+noise or pulses shaped by its envelope. If the implant percept is instead the
+original *plus* an added layer, the architecture is wrong in a way no parameter
+tuning can fix.
+
+It can only be answered with the contralateral device removed. In the bimodal
+condition the acoustic ear supplies the "original underneath" regardless, so the
+answer is guaranteed before it is asked.
+
+Record her **exact wording**, including hedges and self-corrections. Do not
+paraphrase into technical terms — "like a wasp in a tin can" is better data than
+"high-frequency distortion". There is no established vocabulary for electric
+hearing, so hers becomes the measurement language for the project.
 
 ---
 
