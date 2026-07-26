@@ -16,18 +16,62 @@
 
 <main id="stage">
 
-  <!-- Threshold -->
+  <!-- Threshold: choose a path -->
   <section class="view" id="v-threshold" data-view="threshold">
     <div class="moon" aria-hidden="true"><i id="moonFill"></i><u></u></div>
-    <h1 class="display" id="moonName">The waxing half</h1>
+    <h1 class="display" id="moonName">The new moon</h1>
     <p class="quiet" id="moonNote">Loading&hellip;</p>
     <div class="rule"></div>
     <button class="brass" id="beginBtn">Sit for a while</button>
-    <button class="plain" id="laterBtn">Not tonight</button>
+    <button class="plain" id="tuneBtn">Tune the balance first</button>
     <p class="foot"><span id="lenNote">Ten minutes</span> &middot; Stop anytime</p>
   </section>
 
-  <!-- Both devices -->
+  <!-- Channel check -->
+  <section class="view hidden" id="v-channels" data-view="channels">
+    <div class="glyph" aria-hidden="true">&#9790;&#65038;&#9789;</div>
+    <h1 class="display sm">Two tones, one to each ear.</h1>
+    <p class="quiet">A low one on the left, then a high one on the right, then
+      both together. Wear both devices.</p>
+    <button class="brass" id="chanPlay">Play the tones</button>
+    <div class="ears" aria-hidden="true">
+      <span><i class="dot" id="cdL"></i>Left</span>
+      <span><i class="dot" id="cdR"></i>Right</span>
+    </div>
+    <div class="rule"></div>
+    <p class="quiet narrow">Did they land in <em>different</em> ears?</p>
+    <div class="row">
+      <button class="brass sm" id="chanYes" disabled>Different ears</button>
+      <button class="brass sm" id="chanNo" disabled>Both, everywhere</button>
+    </div>
+  </section>
+
+  <!-- Balance staircase -->
+  <section class="view hidden" id="v-balance" data-view="balance">
+    <h1 class="display sm">Where does it sit?</h1>
+    <p class="quiet narrow">The same voice in both ears. Say which way it pulls,
+      and it will keep adjusting until it sits in the middle.</p>
+    <button class="brass" id="balPlay">Listen</button>
+    <div class="rule"></div>
+    <div class="row wide">
+      <button class="arcana wide" id="balLeft" disabled>
+        <span class="sigil" aria-hidden="true">&#9664;</span>
+        <span class="nm">Pulls left</span>
+      </button>
+      <button class="arcana wide" id="balMid" disabled>
+        <span class="sigil" aria-hidden="true">&#9679;</span>
+        <span class="nm">Middle</span>
+      </button>
+      <button class="arcana wide" id="balRight" disabled>
+        <span class="sigil" aria-hidden="true">&#9654;</span>
+        <span class="nm">Pulls right</span>
+      </button>
+    </div>
+    <p class="foot" id="balFoot">&nbsp;</p>
+    <button class="plain tiny" id="balStop">Stop here</button>
+  </section>
+
+  <!-- Both devices, before comparing -->
   <section class="view hidden" id="v-ritual" data-view="ritual">
     <div class="glyph" aria-hidden="true">&#9790;&#65038;&#9789;</div>
     <h1 class="display sm">Both ears tonight.</h1>
@@ -80,7 +124,7 @@
   <!-- Trouble -->
   <section class="view hidden" id="v-trouble" data-view="trouble">
     <div class="glyph" aria-hidden="true">&#9789;</div>
-    <h1 class="display sm">Not tonight, then.</h1>
+    <h1 class="display sm" id="troubleTitle">Not tonight, then.</h1>
     <p class="quiet" id="troubleNote">The companion can&rsquo;t reach its
       library just now. It will still be here later.</p>
     <div class="rule"></div>

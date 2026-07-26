@@ -125,6 +125,15 @@ body{
 .plain:focus-visible{outline:2px solid var(--amethyst);outline-offset:3px}
 .plain.tiny{font-size:12.5px;opacity:.55;margin-top:2px}
 
+/* Horizontal button groups: the balance staircase and the channel check. */
+.row{display:flex;gap:10px;width:100%;justify-content:center}
+.row.wide{gap:8px}
+.brass.sm{font-size:14.5px;padding:12px 18px;flex:1}
+.arcana.wide{aspect-ratio:auto;padding:14px 6px;gap:6px;flex:1}
+.arcana.wide .sigil{font-size:19px}
+.arcana.wide .nm{font-size:9px;letter-spacing:.14em}
+em{font-style:italic;color:var(--bone);font-family:var(--serif)}
+
 @media (prefers-reduced-motion:reduce){
   *{animation:none!important;transition:none!important}
 }

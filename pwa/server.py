@@ -61,6 +61,21 @@ BETA = 6.0
 _sessions: dict[str, dict] = {}
 _pool: dict | None = None
 
+#: Where the listener's calibration lives. One file, overwritten - the most
+#: recent measurement is the one that applies, and hearing changes over time so
+#: an old reading is not a second opinion.
+CALIB_FILE = lambda: SESSION_DIR / "calibration.json"  # noqa: E731
+
+
+def _read_calibration() -> dict | None:
+    f = CALIB_FILE()
+    if f.is_file():
+        try:
+            return json.loads(f.read_text())
+        except (OSError, json.JSONDecodeError):
+            return None
+    return None
+
 
 def _load_pool() -> dict | None:
     """Candidate pool and its pairwise distance matrix, rendered offline.
@@ -263,13 +278,19 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": True, "time": _now(),
                 "stimuli": len(_stimuli()),
                 "candidates": len((_load_pool() or {}).get("candidates", [])),
+                "calibrated": _read_calibration() is not None,
                 "sessions_on_disk": len(list(SESSION_DIR.glob("*.json")))
                 if SESSION_DIR.is_dir() else 0,
             })
             return
 
+        if route == "/api/calibration":
+            self._json(200, {"calibration": _read_calibration()})
+            return
+
         if route == "/api/session":
             sess = _new_session()
+            sess["calibration"] = _read_calibration()
             _sessions[sess["session_id"]] = sess
             trial = _next_trial(sess)
             self._json(200, {
@@ -335,6 +356,30 @@ class Handler(BaseHTTPRequestHandler):
                 rec["chose_idx"], rec["rejected_idx"] = picked, other
             sess["responses"].append(rec)
             self._json(200, {"trial": _next_trial(sess)})
+            return
+
+        if route == "/api/calibration":
+            # Balance offset in dB on the implant side, plus whether the audio
+            # path was verified to keep the ears separate. Both are required
+            # before any comparison means anything: an unbalanced pair makes
+            # every judgement partly a judgement about level, and a path that
+            # collapses to mono makes them all meaningless while still sounding
+            # perfectly plausible.
+            record = {
+                "balance_db": payload.get("balance_db"),
+                "channels_separate": payload.get("channels_separate"),
+                "reversals": payload.get("reversals", []),
+                "responses": payload.get("responses", []),
+                "measured_at": _now(),
+            }
+            try:
+                SESSION_DIR.mkdir(parents=True, exist_ok=True)
+                CALIB_FILE().write_text(json.dumps(record, indent=2))
+                self._json(200, {"saved": True, "calibration": record})
+            except OSError as exc:
+                self._json(200, {"saved": False,
+                                 "error": f"could not write: {exc.strerror}",
+                                 "calibration": record})
             return
 
         if route == "/api/finish":

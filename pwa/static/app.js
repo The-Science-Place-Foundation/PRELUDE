@@ -2,7 +2,7 @@
    Copyright (C) The Science Place Foundation and the PRELUDE contributors.
    Licensed under the GNU Affero General Public License v3.0 or later.
 
-   Web Audio, not <audio> elements, for two reasons that both matter here:
+   Web Audio, not <audio> elements, for three reasons that all matter here:
 
    1. On iOS an <audio> element is silenced by the physical ringer switch.
       A session that plays nothing, with no visible cause, is a baffling
@@ -10,27 +10,35 @@
    2. Alternating presentation needs sample-accurate scheduling. A ragged
       segment boundary is audible as a click, and a click is both unpleasant
       and an unintended cue about which ear is active.
+   3. The balance offset is applied here, per ear, at playback. That gives
+      arbitrary precision from a single file rather than a pre-rendered grid,
+      and it means one measured calibration governs every later stimulus
+      without re-rendering anything.
 
-   Stereo channels are preserved end to end: the file's left channel reaches
-   the left device and the right reaches the right. Nothing here mixes to mono,
-   because the whole comparison depends on the ears staying separate. */
-
-const S = {
-  sessionId: null, trial: null, maxTrials: 40,
-  shownAt: 0, playing: false, buffers: new Map(), ctx: null,
-  answered: 0, sameCount: 0,
-};
+   Stereo is preserved end to end: the file's left channel reaches the left
+   device and the right reaches the right. Nothing mixes to mono, because the
+   whole comparison depends on the ears staying separate. */
 
 /* Alternation period of the rendered stimuli. Kept in step with
    scripts/make_candidate_pool.py, which renders at 500 ms segments. */
 const SEGMENT_MS = 500;
 
+/* Which ear holds the implant. Getting this backwards would apply the balance
+   correction to the wrong side. */
+const IMPLANT_EAR = 'right';
+
+const S = {
+  sessionId: null, trial: null, maxTrials: 40,
+  shownAt: 0, playing: false, buffers: new Map(), ctx: null,
+  answered: 0, sameCount: 0,
+  balanceDb: 0, calibrated: false,
+  bal: null,
+};
+
 const $ = (id) => document.getElementById(id);
 const views = [...document.querySelectorAll('.view')];
-
-function show(name) {
+const show = (name) =>
   views.forEach(v => v.classList.toggle('hidden', v.dataset.view !== name));
-}
 
 /* ------------------------------------------------------------------ audio */
 
@@ -51,20 +59,215 @@ async function loadBuffer(name) {
   return buf;
 }
 
-/** Play one stimulus, returning a promise that settles when it ends. */
-function playBuffer(buf) {
+/**
+ * Play a stereo buffer, optionally offsetting one ear.
+ *
+ * `implantDb` raises the implant side relative to the other. It is applied by
+ * ATTENUATING the opposite ear rather than boosting the implant ear, so the
+ * signal never exceeds the level it was rendered and peak-limited at. Boosting
+ * would quietly undo the ceiling the file was written under.
+ */
+function playBuffer(buf, implantDb = 0) {
   return new Promise((resolve) => {
     const ctx = audioCtx();
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    // Straight to destination: no gain staging, no panning, no channel
-    // merging. Levels were matched when the file was rendered, and anything
-    // applied here would silently undo that.
-    src.connect(ctx.destination);
+
+    if (!implantDb || buf.numberOfChannels < 2) {
+      src.connect(ctx.destination);
+    } else {
+      const split = ctx.createChannelSplitter(2);
+      const merge = ctx.createChannelMerger(2);
+      const gL = ctx.createGain(), gR = ctx.createGain();
+      const cut = Math.pow(10, -Math.abs(implantDb) / 20);
+      const implantIsRight = IMPLANT_EAR === 'right';
+      if (implantDb > 0) {          // implant louder: bring the other ear down
+        gL.gain.value = implantIsRight ? cut : 1;
+        gR.gain.value = implantIsRight ? 1 : cut;
+      } else {                      // implant quieter: bring the implant down
+        gL.gain.value = implantIsRight ? 1 : cut;
+        gR.gain.value = implantIsRight ? cut : 1;
+      }
+      src.connect(split);
+      split.connect(gL, 0); split.connect(gR, 1);
+      gL.connect(merge, 0, 0); gR.connect(merge, 0, 1);
+      merge.connect(ctx.destination);
+    }
     src.onended = resolve;
     src.start();
   });
 }
+
+/** Light the ear indicators in step with the alternation. */
+function earSweep(leadRight) {
+  const l = $('dotL'), r = $('dotR');
+  (leadRight ? r : l).classList.add('on');
+  return setInterval(() => {
+    l.classList.toggle('on'); r.classList.toggle('on');
+  }, SEGMENT_MS);
+}
+const earsOff = (...ids) => ids.forEach(i => $(i).classList.remove('on'));
+
+/* ------------------------------------------------------------- api + moon */
+
+async function api(path, body) {
+  const res = await fetch(path, body ? {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  } : {});
+  if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+  return res.json();
+}
+
+function paintMoon(done, total) {
+  const frac = Math.max(0, Math.min(1, total ? done / total : 0));
+  $('moonFill').style.clipPath = `inset(0 ${(1 - frac) * 100}% 0 0)`;
+  const names = ['The new moon', 'The thin crescent', 'The waxing half',
+                 'The gibbous', 'The full moon'];
+  $('moonName').textContent = names[Math.min(4, Math.floor(frac * 4.999))];
+}
+
+/* --------------------------------------------------- calibration: channels */
+
+function startChannelCheck() {
+  audioCtx();
+  show('channels');
+  $('chanYes').disabled = $('chanNo').disabled = true;
+}
+
+$('chanPlay').addEventListener('click', async () => {
+  $('chanPlay').disabled = true;
+  try {
+    const buf = await loadBuffer('channel_check.wav');
+    // Left only, right only, then both. The indicators follow the file so a
+    // mono collapse is visible as well as audible.
+    [[0, 'cdL'], [2000, 'cdR'], [4000, null]].forEach(([ms, id]) =>
+      setTimeout(() => {
+        earsOff('cdL', 'cdR');
+        if (id) $(id).classList.add('on');
+        else { $('cdL').classList.add('on'); $('cdR').classList.add('on'); }
+      }, ms));
+    await playBuffer(buf);
+    earsOff('cdL', 'cdR');
+    $('chanYes').disabled = $('chanNo').disabled = false;
+  } catch {
+    show('trouble');
+  } finally {
+    $('chanPlay').disabled = false;
+    $('chanPlay').textContent = 'Play again';
+  }
+});
+
+$('chanYes').addEventListener('click', () => startBalance());
+$('chanNo').addEventListener('click', () => {
+  // A path that collapses to mono makes every later judgement meaningless
+  // while still sounding perfectly plausible. Stop rather than collect it.
+  $('troubleTitle').textContent = 'Both ears are getting the same thing.';
+  $('troubleNote').textContent =
+    'Something between the phone and the devices is mixing the two sides ' +
+    'together. Nothing measured this way would mean anything, so it is ' +
+    'better to stop and sort that out first.';
+  show('trouble');
+});
+
+/* -------------------------------------------------- calibration: balance */
+
+/* A staircase rather than a fixed sweep of offsets.
+   It approaches the balance point from both sides and takes its answer from
+   the reversals, so it does not require the listener's responses to be
+   monotonic - which, with a task this subtle, they will not be. A fixed sweep
+   asked seven questions and produced an unusable answer for exactly that
+   reason. */
+function startBalance() {
+  audioCtx();
+  S.bal = { offset: 0, step: 6, dir: 0, reversals: [], responses: [],
+            centred: [], n: 0 };
+  show('balance');
+  $('balFoot').textContent = 'Press listen when you are ready';
+  $('balPlay').textContent = 'Listen';
+  balButtons(true);
+}
+
+const balButtons = (dis) =>
+  ['balLeft', 'balMid', 'balRight'].forEach(id => { $(id).disabled = dis; });
+
+$('balPlay').addEventListener('click', async () => {
+  $('balPlay').disabled = true;
+  balButtons(true);
+  try {
+    const buf = await loadBuffer('balance_source.wav');
+    await playBuffer(buf, S.bal.offset);
+    balButtons(false);
+    $('balFoot').textContent = 'Which way did it pull?';
+  } catch {
+    show('trouble');
+  } finally {
+    $('balPlay').disabled = false;
+    $('balPlay').textContent = 'Listen again';
+  }
+});
+
+function balanceRespond(kind) {
+  const b = S.bal;
+  b.n++;
+  b.responses.push({ offset: b.offset, said: kind });
+
+  let dir = 0;
+  if (kind === 'left') { dir = +1; b.offset += b.step; }
+  else if (kind === 'right') { dir = -1; b.offset -= b.step; }
+  else { b.centred.push(b.offset); b.step = Math.max(1, b.step / 2); }
+
+  // A reversal means the balance point has been bracketed; narrow the step.
+  if (dir && b.dir && dir !== b.dir) {
+    b.reversals.push(b.offset);
+    b.step = Math.max(1, b.step / 2);
+  }
+  if (dir) b.dir = dir;
+  b.offset = Math.max(-18, Math.min(18, b.offset));
+
+  if (b.reversals.length >= 4 || b.centred.length >= 3 || b.n >= 12) {
+    finishBalance(false);
+    return;
+  }
+  balButtons(true);
+  $('balFoot').textContent = 'Press listen for the next one';
+  $('balPlay').textContent = 'Listen';
+}
+
+$('balLeft').addEventListener('click', () => balanceRespond('left'));
+$('balMid').addEventListener('click', () => balanceRespond('mid'));
+$('balRight').addEventListener('click', () => balanceRespond('right'));
+$('balStop').addEventListener('click', () => finishBalance(true));
+
+async function finishBalance(early) {
+  const b = S.bal;
+  const pts = [...b.reversals, ...b.centred];
+  const value = pts.length
+    ? Math.round((pts.reduce((a, c) => a + c, 0) / pts.length) * 10) / 10
+    : null;
+
+  if (value !== null) S.balanceDb = value;
+  try {
+    await api('/api/calibration', {
+      balance_db: value, channels_separate: true,
+      reversals: b.reversals, responses: b.responses,
+    });
+    S.calibrated = value !== null;
+  } catch { /* it still applies to this session */ }
+
+  $('doneTitle').textContent = value === null
+    ? 'Stopped before it settled.'
+    : 'Balance found.';
+  $('doneNote').textContent = value === null
+    ? 'Nothing saved. It can be done another time.'
+    : `${value > 0 ? '+' : ''}${value} dB on the implant side, from ` +
+      `${b.n} listening${b.n === 1 ? '' : 's'}. Every comparison from here ` +
+      `will use it.`;
+  paintMoon(early ? 1 : 4, 4);
+  show('done');
+}
+
+/* -------------------------------------------------------------- comparing */
 
 async function playTrial() {
   if (S.playing || !S.trial) return;
@@ -80,24 +283,15 @@ async function playTrial() {
     const bufs = await Promise.all(names.map(loadBuffer));
     for (let k = 0; k < 2; k++) {
       cards[k].classList.add('sounding');
-      // Alternating presentation: one ear carries signal at a time, swapping
-      // every segment. Showing both lit would misrepresent what is happening
-      // and would hide a mono collapse, which is exactly the failure worth
-      // catching early.
-      const swap = setInterval(() => {
-        $('dotL').classList.toggle('on');
-        $('dotR').classList.toggle('on');
-      }, SEGMENT_MS);
-      $('dotR').classList.add('on');       // implant ear leads each file
-      await playBuffer(bufs[k]);
-      clearInterval(swap);
+      const sweep = earSweep(IMPLANT_EAR === 'right');
+      await playBuffer(bufs[k], S.balanceDb);
+      clearInterval(sweep);
+      earsOff('dotL', 'dotR');
       cards[k].classList.remove('sounding');
-      $('dotL').classList.remove('on');
-      $('dotR').classList.remove('on');
       if (k === 0) await new Promise(r => setTimeout(r, 420));
     }
     $('trialFoot').textContent = 'Choose whichever felt closer';
-  } catch (err) {
+  } catch {
     $('troubleNote').textContent =
       'That sound could not be loaded. The library may be unreachable.';
     show('trouble');
@@ -109,30 +303,8 @@ async function playTrial() {
   }
 }
 
-/* ------------------------------------------------------------------ moon */
-
-function paintMoon(done, total) {
-  const frac = Math.max(0, Math.min(1, total ? done / total : 0));
-  // A crescent that fills left to right. Deliberately not a percentage.
-  $('moonFill').style.clipPath = `inset(0 ${(1 - frac) * 100}% 0 0)`;
-  const names = ['The new moon', 'The thin crescent', 'The waxing half',
-                 'The gibbous', 'The full moon'];
-  $('moonName').textContent = names[Math.min(4, Math.floor(frac * 4.999))];
-}
-
-/* --------------------------------------------------------------- session */
-
-async function api(path, body) {
-  const res = await fetch(path, body ? {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  } : {});
-  if (!res.ok) throw new Error(`${path} -> ${res.status}`);
-  return res.json();
-}
-
 async function begin() {
-  audioCtx(); // unlock on this gesture, before any await
+  audioCtx();
   try {
     const data = await api('/api/session');
     S.sessionId = data.session_id;
@@ -151,11 +323,9 @@ async function begin() {
   }
 }
 
-/* No enforced settle here, and that is deliberate.
-   The 30-second settle belongs to the calibration session, where a device is
-   physically removed and loudness perception drifts for a while afterwards.
-   This flow asks for no device change - both stay in - so a countdown would be
-   ceremony charging against a listener's scarce attention for nothing. */
+/* No enforced settle before comparing: the 30-second wait belongs to
+   calibration, where a device is physically removed and loudness perception
+   drifts afterwards. This flow asks for no device change. */
 
 function enterTrial() {
   show('trial');
@@ -174,8 +344,7 @@ async function respond(choice) {
     session_id: S.sessionId, trial_id: S.trial.trial_id,
     chose: choice, response_ms: ms,
   };
-  stash(payload); // local safety net; the server is the record
-
+  stash(payload);
   try {
     const data = await api('/api/respond', payload);
     S.trial = data.trial;
@@ -188,11 +357,8 @@ async function respond(choice) {
 
 async function finish(early) {
   try {
-    await api('/api/finish', {
-      session_id: S.sessionId, ended_early: early,
-    });
+    await api('/api/finish', { session_id: S.sessionId, ended_early: early });
   } catch { /* the local stash still holds it */ }
-
   const n = S.answered;
   $('doneTitle').textContent = early
     ? 'Stopping here is a good call.'
@@ -215,13 +381,11 @@ function stash(obj) {
     const all = JSON.parse(localStorage.getItem(key) || '[]');
     all.push({ ...obj, at: new Date().toISOString() });
     localStorage.setItem(key, JSON.stringify(all.slice(-500)));
-  } catch { /* storage full or blocked; not worth interrupting a session */ }
+  } catch { /* not worth interrupting a session over */ }
 }
 
 /* ------------------------------------------------------------------ wire */
 
-$('beginBtn').addEventListener('click', begin);
-$('laterBtn').addEventListener('click', () => finish(true));
 $('settleBtn').addEventListener('click', enterTrial);
 $('listenBtn').addEventListener('click', playTrial);
 $('cardA').addEventListener('click', () => respond(0));
@@ -233,19 +397,40 @@ $('retryBtn').addEventListener('click', () => location.reload());
 
 (async function boot() {
   try {
-    const h = await api('/health');
-    $('moonNote').textContent = h.stimuli
-      ? `${h.sessions_on_disk} listening${h.sessions_on_disk === 1 ? '' : 's'} gathered so far. The shape of it is starting to show.`
-      : 'The library is empty just now.';
-    paintMoon(Math.min(h.sessions_on_disk, 12), 12);
-    $('lenNote').textContent = 'Ten minutes';
+    const [h, c] = await Promise.all([api('/health'), api('/api/calibration')]);
+    const cal = c.calibration;
+    if (cal && typeof cal.balance_db === 'number') {
+      S.balanceDb = cal.balance_db;
+      S.calibrated = true;
+    }
+    const sessions = h.sessions_on_disk;
+
+    if (!S.calibrated) {
+      // Steer toward calibration without blocking. An uncalibrated session is
+      // still informative; it just carries a level confound.
+      $('moonNote').textContent =
+        'The balance has not been tuned yet. That comes first — everything ' +
+        'after it leans on getting it right.';
+      $('beginBtn').textContent = 'Tune the balance';
+      $('beginBtn').addEventListener('click', startChannelCheck);
+      $('tuneBtn').textContent = 'Skip, and just listen';
+      $('tuneBtn').addEventListener('click', begin);
+    } else {
+      const sign = S.balanceDb > 0 ? '+' : '';
+      $('moonNote').textContent = sessions
+        ? `${sessions} listening${sessions === 1 ? '' : 's'} gathered. ` +
+          `Balance held at ${sign}${S.balanceDb} dB.`
+        : `Balance is tuned to ${sign}${S.balanceDb} dB. Nothing gathered yet.`;
+      $('tuneBtn').textContent = 'Tune the balance again';
+      $('beginBtn').addEventListener('click', begin);
+      $('tuneBtn').addEventListener('click', startChannelCheck);
+    }
+    paintMoon(Math.min(sessions, 12), 12);
   } catch {
     show('trouble');
   }
 })();
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  // Only over HTTPS: Safari requires a secure context, and registering over
-  // plain HTTP fails noisily for no benefit.
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
