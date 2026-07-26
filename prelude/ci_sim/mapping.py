@@ -47,7 +47,7 @@ class LoudnessMap:
         dynamic_range_db: float = 12.0,
         base: float = 416.2,
         input_floor_db: float = -60.0,
-    ) -> "LoudnessMap":
+    ) -> LoudnessMap:
         """A generic map with the same T and C on every channel.
 
         ``dynamic_range_db`` is the electrical range between T and C. Values of

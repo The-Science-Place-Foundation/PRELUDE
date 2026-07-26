@@ -48,7 +48,10 @@ def _k_weighting_sos(sample_rate: int) -> np.ndarray:
     vh = 10.0 ** (g / 20.0)
     vb = vh**0.4996667741545416
     denom = 1.0 + k / q + k * k
-    b_shelf = np.array([(vh + vb * k / q + k * k), 2.0 * (k * k - vh), (vh - vb * k / q + k * k)]) / denom
+    b_shelf = (
+        np.array([vh + vb * k / q + k * k, 2.0 * (k * k - vh), vh - vb * k / q + k * k])
+        / denom
+    )
     a_shelf = np.array([1.0, 2.0 * (k * k - 1.0) / denom, (1.0 - k / q + k * k) / denom])
 
     # Highpass.

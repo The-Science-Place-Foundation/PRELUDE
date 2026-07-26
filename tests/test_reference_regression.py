@@ -42,7 +42,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def envelope_correlation(a: np.ndarray, b: np.ndarray, sample_rate: int, n_bands: int = 16) -> float:
+def envelope_correlation(
+    a: np.ndarray, b: np.ndarray, sample_rate: int, n_bands: int = 16
+) -> float:
     """Mean per-band envelope correlation between two signals.
 
     Compares in the domain that matters: a cochlear implant transmits envelopes,
@@ -56,7 +58,7 @@ def envelope_correlation(a: np.ndarray, b: np.ndarray, sample_rate: int, n_bands
 
     cors = [
         np.corrcoef(x, y)[0, 1]
-        for x, y in zip(ea, eb)
+        for x, y in zip(ea, eb, strict=True)
         if x.std() > 1e-9 and y.std() > 1e-9
     ]
     return float(np.mean(cors)) if cors else float("nan")

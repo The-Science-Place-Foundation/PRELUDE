@@ -74,11 +74,15 @@ def resynthesise(
         carriers = filterbank.apply_multi(raw)
     elif carrier == "tone":
         t = np.arange(n_samples, dtype=float) / filterbank.sample_rate
-        phase = rng.uniform(0, 2 * np.pi, size=n_channels) if rng is not None else np.zeros(n_channels)
+        phase = (
+            rng.uniform(0, 2 * np.pi, size=n_channels)
+            if rng is not None
+            else np.zeros(n_channels)
+        )
         carriers = np.stack(
             [
                 np.sin(2 * np.pi * f * t + p)
-                for f, p in zip(filterbank.center_freqs, phase)
+                for f, p in zip(filterbank.center_freqs, phase, strict=True)
             ]
         )
     else:

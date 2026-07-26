@@ -82,8 +82,8 @@ def selection_stability(mask: np.ndarray, frame_samples: int) -> float:
     mask = np.atleast_2d(np.asarray(mask, dtype=bool))
     n_samples = mask.shape[1]
     starts = range(0, n_samples, frame_samples)
-    sets = [frozenset(np.flatnonzero(mask[:, s]).tolist()) for s in starts]
+    sets = [frozenset(np.flatnonzero(mask[:, i]).tolist()) for i in starts]
     if len(sets) < 2:
         return 0.0
-    changes = sum(1 for a, b in zip(sets[:-1], sets[1:]) if a != b)
+    changes = sum(1 for a, b in zip(sets[:-1], sets[1:], strict=True) if a != b)
     return changes / (len(sets) - 1)

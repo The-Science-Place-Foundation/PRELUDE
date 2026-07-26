@@ -65,7 +65,8 @@ def greenwood_frequency(position: np.ndarray | float) -> np.ndarray | float:
     ``position`` is measured from the apex, so 0 is the apical (low-frequency) end
     and 1 the basal (high-frequency) end.
     """
-    return _GREENWOOD_A * (10.0 ** (_GREENWOOD_ALPHA * np.asarray(position, dtype=float)) - _GREENWOOD_K)
+    x = np.asarray(position, dtype=float)
+    return _GREENWOOD_A * (10.0 ** (_GREENWOOD_ALPHA * x) - _GREENWOOD_K)
 
 
 def greenwood_position(frequency: np.ndarray | float) -> np.ndarray | float:
@@ -189,7 +190,9 @@ class Filterbank:
             raise ValueError(
                 f"expected {self.n_channels} rows, got {rows.shape[0]}"
             )
-        return np.stack([signal.sosfiltfilt(s, r) for s, r in zip(self.sos, rows)])
+        return np.stack(
+            [signal.sosfiltfilt(s, r) for s, r in zip(self.sos, rows, strict=True)]
+        )
 
 
 def design_filterbank(
@@ -265,7 +268,9 @@ def design_filterbank(
 
     sos = np.stack(
         [
-            signal.butter(order, [lo / nyquist, hi / nyquist], btype="band", output="sos")
+            signal.butter(
+                order, [lo / nyquist, hi / nyquist], btype="band", output="sos"
+            )
             for lo, hi in edges
         ]
     )

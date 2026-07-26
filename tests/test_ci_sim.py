@@ -22,7 +22,6 @@ from prelude.ci_sim import (
     extract_envelope,
     greenwood_frequency,
     greenwood_position,
-    greenwood_space,
     invert_loudness_map,
     resynthesise,
     select_n_of_m,
@@ -241,7 +240,8 @@ class TestPipeline:
             re_ = extract_envelope(ref, SR, cutoff_hz=50)
             oe = extract_envelope(out, SR, cutoff_hz=50)
             return float(np.mean([
-                np.corrcoef(a, b)[0, 1] for a, b in zip(re_, oe)
+                np.corrcoef(a, b)[0, 1]
+                for a, b in zip(re_, oe, strict=True)
                 if a.std() > 1e-9 and b.std() > 1e-9
             ]))
 

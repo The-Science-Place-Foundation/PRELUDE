@@ -40,12 +40,12 @@ class Audio:
     def is_mono(self) -> bool:
         return self.samples.ndim == 1
 
-    def to_mono(self) -> "Audio":
+    def to_mono(self) -> Audio:
         if self.is_mono:
             return self
         return Audio(self.samples.mean(axis=0), self.sample_rate)
 
-    def resample(self, target_rate: int) -> "Audio":
+    def resample(self, target_rate: int) -> Audio:
         if target_rate == self.sample_rate:
             return self
         g = np.gcd(int(target_rate), int(self.sample_rate))
