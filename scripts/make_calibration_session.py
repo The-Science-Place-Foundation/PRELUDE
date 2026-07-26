@@ -36,7 +36,7 @@ from pathlib import Path
 
 import numpy as np
 
-from prelude.audio import Audio, load_audio, save_audio
+from prelude.audio import Audio, load_audio, prepare_for_playback, save_audio
 from prelude.ci_sim import SimulatorConfig, simulate
 from prelude.study import Ear, EarAssignment, PresentationMode, build_dichotic
 
@@ -119,7 +119,12 @@ Some files deliberately play DIFFERENT audio to each ear. That is not a
 fault. It is the entire point of the exercise.
 
 
-1. channel_check.wav        (5.5s)  -- run this first
+1. source_plain.wav         -- ordinary audio, no processing
+   Played with the HEARING AID OUT, implant only.
+   Just describe what it sounds like. There is nothing to compare.
+
+
+2. channel_check.wav        (5.5s)  -- run this after
    Tests whether your audio path keeps the ears separate at all.
 
      0.0-1.5s   LEFT ear only  (low tone)
@@ -130,13 +135,13 @@ fault. It is the entire point of the exercise.
    cannot be used for anything else here.
 
 
-2. balance_*.wav            (6s each)  -- SAME sound in both ears
+3. balance_*.wav            (6s each)  -- SAME sound in both ears
    Seven files, same melody both sides, {implant.lower()} side offset by a set
    amount. Find the one that sits in the middle of your head.
    Play them in a random order, not from lowest to highest.
 
 
-3. practice_*.wav           -- SAME sound in both ears
+4. practice_*.wav           -- SAME sound in both ears
    Three files, one per presentation style. Identical audio on both sides.
    These are just to get used to how each style feels:
 
@@ -147,7 +152,7 @@ fault. It is the entire point of the exercise.
    Nothing to judge. Just notice which one feels comfortable.
 
 
-4. mode_*.wav               -- DIFFERENT sound in each ear, ON PURPOSE
+5. mode_*.wav               -- DIFFERENT sound in each ear, ON PURPOSE
    The real task, in the same three styles.
 
      {implant} ear (implant)      the ordinary melody
@@ -207,6 +212,24 @@ def main() -> int:
         "part1_balance": [],
         "part2_modes": [],
     }
+
+    # -- Part 1 source: the plain, unprocessed audio ------------------------
+    # Played in the IMPLANT-ONLY condition so the listener can describe the
+    # implant percept directly. Mono and identical in both channels, so it does
+    # not matter which device is in.
+    #
+    # This is the highest-value stimulus in the set: it answers whether the
+    # percept is the original plus an added layer, or the original replaced -
+    # which a vocoder-based simulator cannot both be.
+    print("Part 1 - plain source (implant-only condition)")
+    plain, _ = prepare_for_playback(src, SR)
+    save_audio(out / "source_plain.wav", Audio(np.stack([plain, plain]), SR))
+    manifest["part1_source"] = {
+        "file": "source_plain.wav",
+        "content": "unprocessed audio, identical both ears",
+        "condition": "IMPLANT ONLY - hearing aid removed",
+    }
+    print("  source_plain.wav")
 
     # -- Part 0: channel check ---------------------------------------------
     # Verifies that whatever audio path is in use actually keeps the ears
@@ -304,7 +327,12 @@ def main() -> int:
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
     _write_readme(out, assignment)
     print(f"\nWrote {out}/ - see docs/CALIBRATION-SESSION.md for how to run it.")
-    print("Play these from her phone over her normal Bluetooth stream.")
+    print()
+    print("IMPORTANT: copy this folder to the phone and play the files from")
+    print("there. Do NOT use SonoBus, AirPlay or any network relay - the")
+    print("resampling and packet loss are audible, and a listener cannot")
+    print("separate 'this simulation is wrong' from 'this playback is")
+    print("glitching'. Every judgement becomes ambiguous.")
     return 0
 
 

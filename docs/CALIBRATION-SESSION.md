@@ -1,117 +1,192 @@
-# First Calibration Session — Guide
+# Calibration Session — Guide
 
-**Purpose:** settle two things that everything else depends on, before any
-interface is built.
+Three things this session settles, in priority order:
 
-1. **Loudness balance** between the two ears.
-2. **Which presentation mode** lets the listener compare most easily.
+1. **Is the implant percept layered or substituted?** An architectural question
+   about the simulator that no amount of parameter tuning can answer.
+2. **The loudness balance** between the two ears.
+3. **Which presentation mode** lets the listener compare most easily.
 
-**Time:** about 20 minutes, with breaks. **Equipment:** her phone, her normal
-Bluetooth stream, both devices.
+**Time:** 25 minutes including breaks. **Equipment:** her phone, both devices,
+nothing else.
 
-There is no software to install. Play the files like any other audio.
+Ordered so that if she tires partway, the most valuable result is already in
+hand. Stopping early is a normal outcome, not a failed session.
 
 ---
 
 ## Before you start
 
-**Generate the files:**
+### Generate the files
 
 ```bash
-python scripts/make_calibration_session.py --implant-ear right -o calibration/
+cd /mnt/UNAS/PRELUDE
+python3 scripts/make_calibration_session.py --implant-ear right \
+    --source /path/to/a/speech/recording.wav -o calibration
 ```
 
-> ⚠️ **Get `--implant-ear` right.** If it is wrong, the simulation goes to the
+> ⚠️ **`--implant-ear` must be correct.** Wrong, and the simulation goes to the
 > implanted ear and the source to the acoustic ear. The experiment inverts and
-> the data still looks completely normal. Check it twice.
+> the data still looks entirely normal. Check it twice.
 
-Copy the `calibration/` folder to her phone.
+**Use speech, not tones.** Sustained tonal stimuli are a poor probe for listeners
+with hearing loss — they can provoke or interact with tinnitus, which contaminates
+exactly the localisation judgement Part 2 depends on. An implant also renders
+resonance as buzzing, so a resonant figure is uncomfortable and uninformative. An
+audiobook excerpt works well. The synthetic fallback is a last resort.
 
-**Play the files from the phone itself. Do not use a network relay.**
+### Copy the folder to her phone and play it from there
 
-SonoBus, AirPlay and similar add resampling, buffering and packet loss on top of
-the Bluetooth codec. Those artefacts are audible, and a listener cannot separate
-"this simulation is wrong" from "this playback is glitching" — so every judgement
-in the session becomes ambiguous. Copy the folder to the phone and play it
-locally. A relay is fine for listening to music while you work; it is not fine
-for a measurement.
+> ⚠️ **Do not use SonoBus, AirPlay, or any network relay.**
 
-**Set the volume before anything else.** Play `balance_plus_0dB.wav` at her
-normal listening level and leave the volume there for the whole session. Every
-comparison assumes a fixed playback level; changing it mid-session invalidates
-everything before the change.
+A relay adds resampling, buffering and packet loss *on top of* the Bluetooth
+codec. Those artefacts are audible, and she cannot separate "this simulation is
+wrong" from "this playback is glitching" — so every judgement becomes ambiguous.
+A relay is fine for listening to music while you work. It is not fine for a
+measurement.
 
-**Say this, in your own words:** you can stop at any point, for any reason or
-none. There are no wrong answers, and "they sound the same" and "I don't know"
-are both real, useful answers — in fact they're often the most informative ones.
+### Set the volume once
+
+Play `balance_plus_0dB.wav` at her normal listening level. **Leave the volume
+there for the whole session and write the setting down.** Every comparison
+assumes a fixed level; changing it mid-session invalidates everything before the
+change, and an unrecorded level means the session cannot be reproduced.
+
+### Say this, in your own words
+
+She can stop at any point, for any reason or none. There are no wrong answers.
+**"They sound the same"** and **"I don't know"** are real answers and often the
+most informative ones — please don't guess to be helpful.
 
 ---
 
-## Part 1 — Loudness balance (about 8 minutes)
+## Part 0 — Channel check (2 minutes)
+
+**Condition: BOTH DEVICES.** Needed — the point is to confirm each ear receives
+its own channel.
+
+Play `channel_check.wav` and ask which ear each tone is in.
+
+| Time | Should be heard in |
+|---|---|
+| 0.0–1.5 s | **left** ear only (low tone) |
+| 2.0–3.5 s | **right** ear only (high tone) |
+| 4.0–5.5 s | both ears, different pitch each side |
+
+**If both tones arrive in both ears, stop.** That path mixes to mono and cannot
+carry anything else in this session. Nothing later would mean anything.
+
+---
+
+## Part 1 — What the implant alone sounds like (5 minutes)
+
+> **Condition: IMPLANT ONLY. Take the hearing aid out.**
+> Allow about 30 seconds for her hearing to settle before playing anything.
+
+**This is the highest-value part of the session. Do it while she is fresh.**
+
+Play the **plain source file** — the ordinary speech recording, not a dichotic
+file. Then ask:
+
+> Describe what this sounds like now, in your own words.
+
+Let her answer fully before asking the second question:
+
+> Is the original sound still there underneath, with something added on top of
+> it? Or has it been replaced by something else entirely?
+
+### Why this question is load-bearing
+
+The simulator is built on a **vocoder**, which *replaces* the fine structure of a
+sound: the original is gone, substituted by noise or pulses shaped by its
+envelope. If her percept is instead the original *plus* an added layer, the
+architecture is wrong in a way no parameter fitting can reach — because a vocoder
+does not retain the original to layer anything onto.
+
+**It can only be answered with the hearing aid out.** With both devices in, the
+acoustic ear supplies an audible "original underneath" regardless of what the
+implant does, so the answer is determined before the question is asked. A previous
+session made exactly this mistake, and the result was uninterpretable.
+
+### Recording it
+
+Write her **exact wording**, including hedges and self-corrections. Do not
+paraphrase into technical language — *"like a wasp in a tin can"* is better data
+than *"high-frequency distortion"*. There is no established vocabulary for
+electric hearing, so hers becomes the measurement language for this project.
+
+---
+
+> **Put the hearing aid back in now.** Allow ~30 seconds to settle.
+> Everything remaining uses both devices.
+
+---
+
+## Part 2 — Loudness balance (10 minutes)
 
 **Condition: BOTH DEVICES.** Correct here — the task is balancing one against
-the other, which requires both.
+the other.
 
-Electric and acoustic hearing have very different loudness growth. Matching both
-channels to the same measured level does **not** make them equally loud to her.
-Until this is calibrated, every later judgement is partly a judgement about which
-side is louder.
+Electric and acoustic hearing have very different loudness growth, so matching
+both channels to the same measured level does **not** make them equally loud to
+her. Until this is calibrated, every later judgement is partly a judgement about
+which side is louder.
 
+Play the seven `balance_*.wav` files. Each has the same speech in both ears, with
+the implant side offset by a known amount. For each, ask:
 
-Play the seven `balance_*.wav` files. Each has the same sound in both ears, with
-the implant side offset by a known amount.
+> Does it sit in the middle of your head, or pull to one side?
 
-For each one ask:
+Record **left / centre / right** and how strongly (1–5).
 
-> Does the sound feel like it's sitting in the middle of your head, or pulling to
-> one side?
+### Three rules that make the difference
 
-Record: **left / centre / right**, and how strongly.
+**Shuffle the order.** Not −9 through +9. A monotonic sweep invites her to track
+the pattern rather than judge each one.
 
-Play them **in a shuffled order**, not from −9 through +9. A monotonic sweep
-invites her to track the pattern rather than judge each one.
+**Repeat at least three offsets**, unannounced, as trials 8–10. Without repeats
+there is no way to tell a real balance point from a noisy one — and both look
+equally confident.
+
+**Check monotonicity before trusting the answer.** Sorted by offset, the reported
+position should move steadily from left to right. If it jumps around — if a
+more-negative offset reads further right than a less-negative one — the result is
+not supported, however clear any single trial felt. A previous session produced
+six inversions out of 21 orderable pairs, with the *most confident* response
+pointing the wrong way.
 
 **What you're looking for:** the offset where it sits centred. If two adjacent
-offsets both feel centred, take the midpoint. If none do, note which direction it
-always pulls — that itself is a finding, and means we need a wider range.
-
-**Record the winning offset. Every future session uses it.**
+offsets both feel centred, take the midpoint. If none do, note which way it
+always pulls — that is a finding, and means the range needs widening
+(`--offsets -18 -15 -12 -9 -6 -3 0`).
 
 ---
 
-minus_3db:
-minus_6db:
-minus_9db:
-
-## Part 2 — Presentation mode (about 10 minutes)
+## Part 3 — Presentation mode (8 minutes, skip if tired)
 
 **Condition: BOTH DEVICES.** Correct here — the dichotic comparison needs one
 signal in each ear.
 
+Lowest priority. A previous session already indicated **alternating**; this
+re-confirms it on a clean playback path. If she is flagging, stop instead — the
+existing answer is probably right.
+
 > ⚠️ **The `mode_*.wav` files play different audio to each ear on purpose.**
->
-> The implanted ear gets the ordinary melody. The acoustic ear gets a **CI
-> simulation** of it, which is *meant* to sound electronic, buzzy and strange.
-> That is the thing being judged — whether our simulation matches what her
-> implant actually does. If both ears carried the same audio there would be
-> nothing to compare.
->
-> This reads as a fault if you are not expecting it. Say so before playing them.
+> The implanted ear gets ordinary speech. The acoustic ear gets a **simulation**
+> of it, which is *meant* to sound electronic and strange. That is the thing
+> being judged. **Tell her this before pressing play**, or she will reasonably
+> assume the file is broken.
 
+### 3a. Practice — identical audio in both ears
 
-### 2a. Practice — identical audio in both ears
-
-Play the three `practice_*.wav` files first. Same sound both sides; nothing to
-judge. They exist so she learns how each style *feels* — which ear is playing,
-whether the switching is comfortable — before meeting the harder question.
-
-Without this she meets an unfamiliar interaction and an unfamiliar judgement in
-the same moment, and confusion about one looks exactly like difficulty with the
-other.
+Play the three `practice_*.wav` files first. Same sound both sides, nothing to
+judge. They let her learn how each style *feels* before meeting the harder
+question — otherwise an unfamiliar interaction and an unfamiliar judgement arrive
+together, and confusion about one looks exactly like difficulty with the other.
 
 Ask only: **does this way of presenting feel comfortable?**
 
-### 2b. The real comparison
+### 3b. The real comparison
 
 | File | What it does |
 |---|---|
@@ -119,128 +194,74 @@ Ask only: **does this way of presenting feel comfortable?**
 | `mode_alternating.wav` | Switches ear every 0.5 s |
 | `mode_sequential.wav` | One ear, pause, then the other |
 
-Play each **twice**, in a shuffled order. After each, ask:
+Play each **twice**, shuffled. After each:
 
 > Could you tell the two sounds apart?
 >
-> Which was easier — comparing them, or did they blur into one thing?
+> Was it two sounds you were comparing, or did they blur into one?
 
 Then, having heard all three:
 
-> Which one made it easiest to say whether the two matched?
+> Which made it easiest to say whether the two matched?
 
-**The specific thing to watch for.** The listener's description of her brain "filling
-in" when both devices are on is exactly the risk with **simultaneous**. If the
-two signals fuse into one natural-seeming percept, she is reporting on the merged
+**Anchor the scale out loud before asking: 1 means easiest, 5 means hardest.** An
+unanchored 1–5 is ambiguous in both directions and cannot be compared across
+sessions.
+
+**The specific thing to watch for.** If the two signals fuse into one
+natural-seeming percept under **simultaneous**, she is reporting on the merged
 sound rather than comparing its parts — and it may not feel like a problem from
-the inside. Ask directly:
-
-> With that one, did it feel like two sounds you were comparing, or one sound?
-
-If she says "one sound", simultaneous mode is unusable for fitting, however
-pleasant it is. That is a real result and worth knowing now rather than after a
-hundred trials.
-
----
-
-## Part 3 — Vocabulary (10 minutes)
-
-Two sub-parts, in **different listening conditions**. This matters: a judgement
-made while wearing both devices is not a readout of the implant, because the
-acoustic ear fills in what the implant misses. Ask the wrong question in the
-wrong condition and the answer is uninterpretable.
-
-### 3a. Comparing the two halves — **both devices in**
-
-Play `mode_sequential.wav`. Ask how the two halves differ.
-
-This builds vocabulary for the *comparison* task she will do repeatedly later. It
-cannot tell you what the implant alone sounds like, because both ears are active.
-
-### 3b. What the implant alone sounds like — **IMPLANT ONLY**
-
-> **Take the hearing aid out.** Allow ~30 seconds for hearing to settle.
-
-Play the plain source file — the unprocessed audio, not a dichotic file — and ask:
-
-> Describe what this sounds like now, in your own words.
-
-Then, specifically:
-
-> Is the original sound still there underneath, with something added on top of
-> it? Or has it been replaced by something else entirely?
-
-**This question is load-bearing.** The simulator is built on a vocoder, which
-*replaces* the fine structure of a sound: the original is gone, substituted by
-noise or pulses shaped by its envelope. If the implant percept is instead the
-original *plus* an added layer, the architecture is wrong in a way no parameter
-tuning can fix.
-
-It can only be answered with the contralateral device removed. In the bimodal
-condition the acoustic ear supplies the "original underneath" regardless, so the
-answer is guaranteed before it is asked.
-
-Record her **exact wording**, including hedges and self-corrections. Do not
-paraphrase into technical terms — "like a wasp in a tin can" is better data than
-"high-frequency distortion". There is no established vocabulary for electric
-hearing, so hers becomes the measurement language for the project.
+the inside. A previous session showed the tell: she could not say which ear was
+carrying which signal. If that recurs, simultaneous is unusable for fitting
+however pleasant it is.
 
 ---
 
 ## Recording the data
 
 Copy `docs/lab-notebook/TEMPLATE-session.md` to
-`docs/lab-notebook/YYYY-MM-DD-calibration.md` and fill it in.
+`private/sessions/YYYY-MM-DD-calibration.md`.
 
-The three things that must be recorded or the session cannot be used:
+> ⚠️ **`private/` — not `docs/lab-notebook/`.** Raw session records contain
+> health information and are gitignored. Anything going into the public notebook
+> must be de-identified and about *method*, not about her.
 
-1. **The balance offset** in dB, and which ear it favours.
-2. **The preferred presentation mode**, and whether simultaneous caused fusion.
-3. **Playback volume setting** and streaming path, so a later session can
-   reproduce the conditions.
+Must be recorded or the session cannot be used:
 
-Also record, briefly: time of day, her alertness (1–5), when her audiogram was
-last done, and anything surprising.
+1. **Her exact words from Part 1**, and whether she said layered or replaced.
+2. **The balance offset**, plus the repeat trials, so monotonicity can be checked.
+3. **Playback volume setting**, and confirmation it was played **locally from the
+   phone**.
+4. **Which condition each part was run in.**
 
-**Record what went wrong too.** If she got tired at file four, if the balance
-never centred, if she found a question confusing — that shapes the next session
-more than the clean results do.
+Also, briefly: time of day, alertness at start and end (1–5), audiogram date, and
+anything surprising.
 
-### Then run
-
-```bash
-python scripts/analyse_calibration.py docs/lab-notebook/YYYY-MM-DD-calibration.md
-```
-
-...which does not exist yet. It will once we know what the data looks like —
-building the analysis before seeing the first session's shape would be guessing.
-For now the notebook entry is the record.
-
----
-
-## What happens next
-
-The balance offset feeds `implant_target_lufs` / `acoustic_target_lufs` in every
-subsequent dichotic stimulus. The mode choice sets the default in
-`prelude.study.dichotic` and determines the interaction model of the app.
-
-Then the adaptive fitter takes over: roughly 30–40 forced choices, spread across
-several short sittings, to fit the simulator to her hearing.
+**Record what went wrong.** If she tired at file four, if the balance never
+centred, if a question confused her — that shapes the next session more than the
+clean results do.
 
 ---
 
 ## If something goes wrong
 
-**She can't tell any of them apart.** Genuinely possible and not a failure. It
-means the candidate simulations are too similar — we widen the parameter pool and
-try again with more distinct options.
+**Both tones in both ears at Part 0.** Stop. The path is mono. Fix that first;
+nothing else in the session can mean anything.
 
-**Everything pulls to one ear regardless of offset.** The range is too narrow.
-Regenerate with `--offsets -18 -15 -12 -9 -6 -3 0`.
+**She can't tell any of the modes apart.** Genuinely possible and not a failure.
+It means the candidates are too similar — we widen the parameter pool and retry
+with more distinct options.
 
-**She gets tired quickly.** Stop. Part 1 alone is a useful session. Fatigued
-discrimination data is indistinguishable from a null result, so pushing through
+**Everything pulls one way regardless of offset.** The range is too narrow.
+Regenerate with wider offsets.
+
+**She gets tired.** Stop. Part 1 alone is a successful session. Fatigued
+discrimination data is indistinguishable from a null result, so pushing on
 produces numbers that look like data and are not.
 
-**Anything is uncomfortably loud.** Stop immediately and re-check the volume
-against `balance_plus_0dB.wav`. Do not continue until it is right.
+**Anything is uncomfortably loud.** Stop immediately, re-check against
+`balance_plus_0dB.wav`, and do not continue until it is right.
+
+**Any part gets run in the wrong condition.** Note it and discard that part. Do
+not analyse it — a condition error produces data that looks completely normal and
+means something different from what you think it means.
