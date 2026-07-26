@@ -12,6 +12,11 @@ services:
     build: .
     container_name: prelude
     restart: unless-stopped
+    # Run as the host user so session records land owned by a real account and
+    # stay readable for analysis. Running as a container-internal user meant the
+    # bind-mounted directory was not writable, and the failure surfaced only when
+    # a session tried to save - at the end, with the data already collected.
+    user: "1000:1000"
     networks:
       BlackMesa-VLAN:
         ipv4_address: 192.168.1.210

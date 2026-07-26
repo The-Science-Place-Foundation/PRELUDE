@@ -91,3 +91,4 @@ calibration_speech/
 
 # PWA runtime data - stimuli and session records live on the server
 pwa/data/
+pool/

@@ -21,6 +21,10 @@ const S = {
   answered: 0, sameCount: 0,
 };
 
+/* Alternation period of the rendered stimuli. Kept in step with
+   scripts/make_candidate_pool.py, which renders at 500 ms segments. */
+const SEGMENT_MS = 500;
+
 const $ = (id) => document.getElementById(id);
 const views = [...document.querySelectorAll('.view')];
 
@@ -76,9 +80,17 @@ async function playTrial() {
     const bufs = await Promise.all(names.map(loadBuffer));
     for (let k = 0; k < 2; k++) {
       cards[k].classList.add('sounding');
-      $('dotL').classList.add('on');
-      $('dotR').classList.add('on');
+      // Alternating presentation: one ear carries signal at a time, swapping
+      // every segment. Showing both lit would misrepresent what is happening
+      // and would hide a mono collapse, which is exactly the failure worth
+      // catching early.
+      const swap = setInterval(() => {
+        $('dotL').classList.toggle('on');
+        $('dotR').classList.toggle('on');
+      }, SEGMENT_MS);
+      $('dotR').classList.add('on');       // implant ear leads each file
       await playBuffer(bufs[k]);
+      clearInterval(swap);
       cards[k].classList.remove('sounding');
       $('dotL').classList.remove('on');
       $('dotR').classList.remove('on');
@@ -133,30 +145,17 @@ async function begin() {
       show('trouble');
       return;
     }
-    startSettle();
+    show('ritual');
   } catch {
     show('trouble');
   }
 }
 
-// Loudness perception drifts briefly after a device is reinserted, so a
-// judgement made inside this window measures the adaptation rather than the
-// sound. Enforced, not suggested.
-function startSettle() {
-  show('ritual');
-  let t = 30;
-  const btn = $('settleBtn'), note = $('settleNote');
-  btn.disabled = true;
-  const tick = setInterval(() => {
-    t--;
-    note.textContent = `Settling · 0:${String(Math.max(0, t)).padStart(2, '0')}`;
-    if (t <= 0) {
-      clearInterval(tick);
-      note.textContent = 'Ready when you are';
-      btn.disabled = false;
-    }
-  }, 1000);
-}
+/* No enforced settle here, and that is deliberate.
+   The 30-second settle belongs to the calibration session, where a device is
+   physically removed and loudness perception drifts for a while afterwards.
+   This flow asks for no device change - both stay in - so a countdown would be
+   ceremony charging against a listener's scarce attention for nothing. */
 
 function enterTrial() {
   show('trial');

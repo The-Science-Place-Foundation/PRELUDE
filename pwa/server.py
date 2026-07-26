@@ -27,9 +27,12 @@ protects on a single-user LAN.
 
 from __future__ import annotations
 
+import itertools
 import json
+import math
 import mimetypes
 import os
+import random
 import re
 import uuid
 from datetime import datetime, timezone
@@ -49,7 +52,96 @@ MAX_TRIALS = 40
 
 SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 
+#: Discrimination sharpness in the choice model. Higher means judgements are
+#: treated as more reliable. Calibrate from catch-trial performance: a listener
+#: answering identical pairs at chance is discriminating on the real trials and
+#: supports a higher value; a strong position bias means the opposite.
+BETA = 6.0
+
 _sessions: dict[str, dict] = {}
+_pool: dict | None = None
+
+
+def _load_pool() -> dict | None:
+    """Candidate pool and its pairwise distance matrix, rendered offline.
+
+    Doing the rendering and the distance computation ahead of time is what
+    lets this server stay dependency-free: the fitting maths below is a few
+    loops over a matrix, which needs no numerical library.
+    """
+    global _pool
+    if _pool is None:
+        f = AUDIO_DIR / "pool.json"
+        if f.is_file():
+            _pool = json.loads(f.read_text())
+    return _pool
+
+
+def _log_sigmoid(x: float) -> float:
+    """log(1 / (1 + e^-x)), without overflowing on either tail."""
+    return -math.log1p(math.exp(-x)) if x > -30 else x
+
+
+def _posterior(sess: dict) -> list[float]:
+    """Normalised posterior over which candidate the listener is hearing.
+
+    Sequential Bayesian update. Presented with two candidates, a listener
+    prefers whichever sounds closer to their own percept, so for a hypothesised
+    truth t:
+
+        P(choose A over B | t) = sigmoid(beta * [D(B,t) - D(A,t)])
+
+    D is computable for any hypothesised t, so a choice can be scored without
+    ever knowing the answer.
+    """
+    pool = _load_pool()
+    if not pool:
+        return []
+    dist = pool["distances"]
+    n = len(dist)
+    logp = [0.0] * n
+
+    for r in sess["responses"]:
+        chosen, rejected = r.get("chose_idx"), r.get("rejected_idx")
+        # "They feel the same" carries real information - it says the two are
+        # near-equidistant from the listener's percept - but not as a preference,
+        # so it updates nothing here rather than being forced into one.
+        if chosen is None or rejected is None:
+            continue
+        for t in range(n):
+            logp[t] += _log_sigmoid(BETA * (dist[rejected][t] - dist[chosen][t]))
+
+    m = max(logp)
+    w = [math.exp(v - m) for v in logp]
+    total = sum(w)
+    return [x / total for x in w] if total > 0 else [1.0 / n] * n
+
+
+def _information_gain(a: int, b: int, post: list[float], dist: list[list[float]]) -> float:
+    """Expected reduction in posterior entropy from asking about (a, b).
+
+    Choosing the most informative comparison rather than a random one is what
+    makes a short session worth sitting through - listening time is the binding
+    constraint on the whole project.
+    """
+    la = [_log_sigmoid(BETA * (dist[b][t] - dist[a][t])) for t in range(len(post))]
+    lb = [_log_sigmoid(BETA * (dist[a][t] - dist[b][t])) for t in range(len(post))]
+    pa = sum(p * math.exp(v) for p, v in zip(post, la, strict=True))
+    pb = sum(p * math.exp(v) for p, v in zip(post, lb, strict=True))
+    tot = pa + pb
+    if tot <= 0:
+        return -1e9
+    pa, pb = pa / tot, pb / tot
+
+    def ent(ll):
+        q = [p * math.exp(v) for p, v in zip(post, ll, strict=True)]
+        s = sum(q)
+        if s <= 0:
+            return 0.0
+        return -sum((x / s) * math.log(x / s) for x in q if x > 0)
+
+    prior = -sum(p * math.log(p) for p in post if p > 0)
+    return prior - (pa * ent(la) + pb * ent(lb))
 
 
 def _now() -> str:
@@ -75,37 +167,55 @@ def _new_session(listener: str = "P01") -> dict:
 
 
 def _next_trial(sess: dict) -> dict | None:
-    """Pick the next comparison.
-
-    Currently pairs stimuli round-robin with a catch trial roughly every sixth,
-    at a jittered position so the listener cannot learn to spot them. When the
-    candidate pool is wired in, this is where prelude.fitting.SimulatorFitter
-    chooses the pair by expected information gain instead.
-    """
+    """Choose the next comparison by expected information gain."""
     n = len(sess["responses"])
     if n >= MAX_TRIALS:
         return None
 
-    pool = _stimuli()
-    if len(pool) < 2:
+    pool = _load_pool()
+    if not pool or len(pool["candidates"]) < 2:
         return None
 
-    # Jittered catch trials: identical audio both sides, no correct answer.
-    # They measure response bias, which is the floor every other result is read
-    # against.
-    is_catch = (n > 0) and (n % 6 == (hash(sess["session_id"]) % 3 + 4))
+    cands = pool["candidates"]
+    dist = pool["distances"]
+    total = len(cands)
+    rng = random.Random(f"{sess['session_id']}:{n}")
 
-    a = pool[n % len(pool)]
-    b = a if is_catch else pool[(n + 1 + (n // len(pool))) % len(pool)]
-    if b == a and not is_catch:
-        b = pool[(n + 2) % len(pool)]
+    # Catch trial: the same candidate on both sides, so there is no correct
+    # answer. Any consistent preference measures response bias, which is the
+    # floor every other result has to be read against. Position is jittered -
+    # a fixed interval would let a listener learn to spot them.
+    is_catch = n > 0 and rng.random() < 1.0 / 6.0
+    if is_catch:
+        a = b = rng.randrange(total)
+    else:
+        post = _posterior(sess)
+        # Restrict to candidates still plausibly the answer, then pick the pair
+        # that most reduces uncertainty.
+        live = [i for i, p in enumerate(post) if p > max(post) * 1e-3] or list(range(total))
+        if len(live) > 10:
+            live = sorted(live, key=lambda i: -post[i])[:10]
+        asked = {tuple(sorted((t["a_idx"], t["b_idx"]))) for t in sess["trials"]}
+        best, best_gain = None, -1e9
+        for i, j in itertools.combinations(live, 2):
+            if tuple(sorted((i, j))) in asked:
+                continue
+            g = _information_gain(i, j, post, dist)
+            if g > best_gain:
+                best, best_gain = (i, j), g
+        if best is None:
+            order = sorted(range(total), key=lambda i: -post[i])
+            best = (order[0], order[1])
+        a, b = best
 
-    order = [0, 1] if (hash(sess["session_id"] + str(n)) % 2 == 0) else [1, 0]
+    order = [0, 1]
+    rng.shuffle(order)
     trial = {
         "trial_id": uuid.uuid4().hex[:10],
         "index": n,
         "is_catch": is_catch,
-        "options": [a, b],
+        "a_idx": a, "b_idx": b,
+        "options": [cands[a]["file"], cands[b]["file"]],
         "presentation_order": order,
         "remaining": MAX_TRIALS - n,
     }
@@ -152,6 +262,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {
                 "ok": True, "time": _now(),
                 "stimuli": len(_stimuli()),
+                "candidates": len((_load_pool() or {}).get("candidates", [])),
                 "sessions_on_disk": len(list(SESSION_DIR.glob("*.json")))
                 if SESSION_DIR.is_dir() else 0,
             })
@@ -206,12 +317,23 @@ class Handler(BaseHTTPRequestHandler):
             if not sess:
                 self._json(404, {"error": "unknown session - start a new one"})
                 return
-            sess["responses"].append({
+            chose = payload.get("chose")               # 0, 1, or "same"
+            trial = next((t for t in sess["trials"]
+                          if t["trial_id"] == payload.get("trial_id")), None)
+            rec = {
                 "trial_id": payload.get("trial_id"),
-                "chose": payload.get("chose"),          # 0, 1, or "same"
+                "chose": chose,
                 "response_ms": payload.get("response_ms"),
                 "at": _now(),
-            })
+            }
+            # Resolve the blinded choice back to candidate indices. The page is
+            # never told which card is which; that mapping lives only here.
+            if trial and isinstance(chose, int) and not trial["is_catch"]:
+                shown = [trial["a_idx"], trial["b_idx"]]
+                picked = shown[trial["presentation_order"][chose]]
+                other = shown[trial["presentation_order"][1 - chose]]
+                rec["chose_idx"], rec["rejected_idx"] = picked, other
+            sess["responses"].append(rec)
             self._json(200, {"trial": _next_trial(sess)})
             return
 
@@ -221,15 +343,38 @@ class Handler(BaseHTTPRequestHandler):
             if not sess:
                 self._json(404, {"error": "unknown session"})
                 return
+            post = _posterior(sess)
+            if post:
+                top = max(range(len(post)), key=lambda i: post[i])
+                pool = _load_pool()
+                sess["fit"] = {
+                    "best_candidate": pool["candidates"][top]["name"],
+                    "probability": round(post[top], 4),
+                    "converged": post[top] >= 0.80,
+                    "posterior": [round(p, 4) for p in post],
+                }
             sess["finished_at"] = _now()
             sess["notes"] = payload.get("notes", "")
             sess["ended_early"] = bool(payload.get("ended_early"))
             record = {k: v for k, v in sess.items() if k != "catch_positions"}
 
-            SESSION_DIR.mkdir(parents=True, exist_ok=True)
-            out = SESSION_DIR / f"{sess['started_at'][:10]}-{sess['session_id']}.json"
-            out.write_text(json.dumps(record, indent=2))
-            self._json(200, {"saved": out.name, "trials": len(sess["responses"])})
+            try:
+                SESSION_DIR.mkdir(parents=True, exist_ok=True)
+                out = SESSION_DIR / f"{sess['started_at'][:10]}-{sess['session_id']}.json"
+                out.write_text(json.dumps(record, indent=2))
+                self._json(200, {"saved": out.name,
+                                 "trials": len(sess["responses"])})
+            except OSError as exc:
+                # The judgements exist; only the write failed. Hand the whole
+                # record back so the client keeps it, and say plainly that it
+                # is not on disk. Silently losing a completed session would be
+                # far worse than an error the listener never sees.
+                self._json(200, {
+                    "saved": None,
+                    "error": f"could not write to disk: {exc.strerror}",
+                    "trials": len(sess["responses"]),
+                    "record": record,
+                })
             return
 
         self._json(404, {"error": "no such endpoint"})
