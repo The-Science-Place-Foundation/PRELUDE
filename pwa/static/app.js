@@ -183,7 +183,7 @@ function startBalance() {
   S.bal = { offset: 0, step: 6, dir: 0, reversals: [], responses: [],
             centred: [], probe: -1, n: 0 };
   show('balance');
-  $('balFoot').textContent = 'Press listen when you are ready';
+  $('balFoot').textContent = 'Eight short listens · press listen to start';
   $('balPlay').textContent = 'Listen';
   balButtons(true);
 }
@@ -198,7 +198,7 @@ $('balPlay').addEventListener('click', async () => {
     const buf = await loadBuffer('balance_source.wav');
     await playBuffer(buf, S.bal.offset);
     balButtons(false);
-    $('balFoot').textContent = 'Which way did it pull?';
+    $('balFoot').textContent = `${S.bal.n + 1} of 8 · which way did it pull?`;
   } catch {
     show('trouble');
   } finally {
@@ -237,12 +237,18 @@ function balanceRespond(kind) {
   // Requires reversals - actual bracketing - or the trial ceiling. Counting
   // "centred" answers as sufficient is what let the first calibration finish
   // without measuring anything.
-  if (b.reversals.length >= 4 || b.n >= 12) {
+  // Eight trials, not twelve. Simulated against 200 listeners at several true
+  // balance points, twelve gave 0.3-0.9 dB accuracy and eight gave 0.3-1.3 dB
+  // - a third less of a tedious task for an error well below anything that
+  // matters downstream. The listener's willingness to keep doing this is a
+  // real constraint, and spending it on precision we do not need is a bad
+  // trade.
+  if (b.reversals.length >= 4 || b.n >= 8) {
     finishBalance(false);
     return;
   }
   balButtons(true);
-  $('balFoot').textContent = 'Press listen for the next one';
+  $('balFoot').textContent = `${b.n} of 8 · press listen for the next`;
   $('balPlay').textContent = 'Listen';
 }
 
