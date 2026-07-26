@@ -173,7 +173,7 @@ evidence beyond it having come first.
 
 CI_SIM was only ever a proxy. Its value here came from its settings having been
 tuned, over at least eight iterations, against one listener's reported perception
-— so what carries the validation is **her judgement**, not the tool. That
+— so what carries the validation is **the listener's judgement**, not the tool. That
 judgement is directly available and does not need an intermediary.
 
 **Revised status of these fixtures:** demoted from fitting target to regression

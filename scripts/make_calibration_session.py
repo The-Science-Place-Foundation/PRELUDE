@@ -203,7 +203,7 @@ def main() -> int:
 
     manifest: dict = {
         "how_to_use": "See docs/CALIBRATION-SESSION.md. Copy this whole folder "
-                      "to her phone and play the files from it.",
+                      "to the phone and play the files from it.",
         "assignment": assignment.describe(),
         "implant_ear": assignment.implant_ear.value,
         "acoustic_ear": assignment.acoustic_ear.value,

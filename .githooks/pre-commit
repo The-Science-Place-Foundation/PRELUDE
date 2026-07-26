@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+#
+# PRELUDE pre-commit hook — blocks participant data from entering the repository.
+#
+# Install:
+#     git config core.hooksPath .githooks
+#
+# This exists because the rules in CONTRIBUTING.md were correct and were still
+# broken in practice: a participant's first name reached six pushed commits
+# before anyone noticed, and removing it afterwards required rewriting public
+# history. A check that runs is worth more than a rule that is remembered.
+#
+# Bypass with --no-verify only when you are certain, and say why in the commit
+# message.
+
+set -uo pipefail
+
+RED=$'\033[0;31m'; YEL=$'\033[0;33m'; GRN=$'\033[0;32m'; OFF=$'\033[0m'
+fail=0
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+note() { printf '%s\n' "$1"; }
+problem() { printf '%s%s%s\n' "$RED" "$1" "$OFF"; fail=1; }
+warn() { printf '%s%s%s\n' "$YEL" "$1" "$OFF"; }
+
+# --------------------------------------------------------------------------
+# 1. Participant names.
+#
+# Keep this list in .githooks/identifiers.txt, one case-insensitive regex per
+# line. That file is gitignored, so the names themselves never enter the repo -
+# a blocklist of real names committed to a public repo would defeat its own
+# purpose.
+# --------------------------------------------------------------------------
+ids=".githooks/identifiers.txt"
+if [ -f "$ids" ]; then
+  while IFS= read -r pattern; do
+    [ -z "$pattern" ] && continue
+    case "$pattern" in \#*) continue ;; esac
+    if hits=$(git diff --cached -U0 | grep -iEn "^\+.*${pattern}" 2>/dev/null); then
+      problem "BLOCKED: staged content matches a participant identifier."
+      note "  pattern: ${pattern}"
+      note "$(printf '%s\n' "$hits" | head -3 | sed 's/^/  /')"
+      note ""
+    fi
+  done < "$ids"
+else
+  warn "note: .githooks/identifiers.txt not found - name checking is off."
+  warn "      Create it (one regex per line) to enable. It is gitignored."
+fi
+
+# --------------------------------------------------------------------------
+# 2. Audio files. Large, undiffable, and may carry a recorded voice.
+# --------------------------------------------------------------------------
+if audio=$(printf '%s\n' "$staged" | grep -iE '\.(wav|mp3|flac|ogg|m4a|aac|aiff|opus)$'); then
+  problem "BLOCKED: audio files are staged."
+  note "$(printf '%s\n' "$audio" | sed 's/^/  /')"
+  note "  Research audio may contain a participant's voice, and audio does not"
+  note "  belong in git regardless. Keep it outside the repo."
+  note ""
+fi
+
+# --------------------------------------------------------------------------
+# 3. Clinical and session data.
+# --------------------------------------------------------------------------
+if clinical=$(printf '%s\n' "$staged" | grep -iE '(^|/)(private/|sessions/)|device_profile\.yaml$|\.(map|audiogram)$'); then
+  problem "BLOCKED: participant or clinical data is staged."
+  note "$(printf '%s\n' "$clinical" | sed 's/^/  /')"
+  note "  Device programs, audiograms and raw session records are health"
+  note "  information. They stay in private/, which is gitignored."
+  note ""
+fi
+
+# --------------------------------------------------------------------------
+# 4. Clinical values appearing inline. Warn rather than block - these words have
+#    legitimate uses in the domain documentation.
+# --------------------------------------------------------------------------
+if git diff --cached -U0 | grep -iEq '^\+.*(t-level|c-level|threshold level|electrode impedance|audiogram (of|for|shows)|dB HL at)'; then
+  warn "WARNING: staged content mentions clinical measurements."
+  warn "  Generic discussion is fine. A specific person's values are not."
+  warn ""
+fi
+
+# --------------------------------------------------------------------------
+# 5. Gendered pronouns in participant-facing docs.
+#
+# Documentation describes a role, not a person. A pronoun narrows a
+# de-identified participant to an individual and is unnecessary either way.
+# --------------------------------------------------------------------------
+if pron=$(git diff --cached -U0 -- '*.md' '*.py' | grep -iEn '^\+.*\b(she|her|hers|herself|he|him|his|himself)\b' | grep -viE '\b(the|other|either|another)\b.*\bhers?\b'); then
+  warn "WARNING: gendered pronouns in staged documentation."
+  note "$(printf '%s\n' "$pron" | head -3 | sed 's/^/  /')"
+  warn "  Prefer they/them, or name the role: 'the listener', 'the participant'."
+  warn ""
+fi
+
+if [ "$fail" -ne 0 ]; then
+  printf '%sCommit blocked.%s Fix the above, or use --no-verify if you are\n' "$RED" "$OFF"
+  printf 'certain and say why in the commit message.\n'
+  exit 1
+fi
+
+printf '%sprivacy checks passed%s\n' "$GRN" "$OFF"
+exit 0

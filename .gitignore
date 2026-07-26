@@ -85,3 +85,6 @@ Thumbs.db
 calibration/
 sessions/
 calibration_speech/
+
+# Real participant identifiers - never commit these
+.githooks/identifiers.txt

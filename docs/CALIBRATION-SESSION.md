@@ -7,10 +7,10 @@ Three things this session settles, in priority order:
 2. **The loudness balance** between the two ears.
 3. **Which presentation mode** lets the listener compare most easily.
 
-**Time:** 25 minutes including breaks. **Equipment:** her phone, both devices,
+**Time:** 25 minutes including breaks. **Equipment:** the listener's phone, both devices,
 nothing else.
 
-Ordered so that if she tires partway, the most valuable result is already in
+Ordered so that if they tire partway, the most valuable result is already in
 hand. Stopping early is a normal outcome, not a failed session.
 
 ---
@@ -35,26 +35,26 @@ exactly the localisation judgement Part 2 depends on. An implant also renders
 resonance as buzzing, so a resonant figure is uncomfortable and uninformative. An
 audiobook excerpt works well. The synthetic fallback is a last resort.
 
-### Copy the folder to her phone and play it from there
+### Copy the folder to the phone and play it from there
 
 > ⚠️ **Do not use SonoBus, AirPlay, or any network relay.**
 
 A relay adds resampling, buffering and packet loss *on top of* the Bluetooth
-codec. Those artefacts are audible, and she cannot separate "this simulation is
+codec. Those artefacts are audible, and a listener cannot separate "this simulation is
 wrong" from "this playback is glitching" — so every judgement becomes ambiguous.
 A relay is fine for listening to music while you work. It is not fine for a
 measurement.
 
 ### Set the volume once
 
-Play `balance_plus_0dB.wav` at her normal listening level. **Leave the volume
+Play `balance_plus_0dB.wav` at their normal listening level. **Leave the volume
 there for the whole session and write the setting down.** Every comparison
 assumes a fixed level; changing it mid-session invalidates everything before the
 change, and an unrecorded level means the session cannot be reproduced.
 
 ### Say this, in your own words
 
-She can stop at any point, for any reason or none. There are no wrong answers.
+They can stop at any point, for any reason or none. There are no wrong answers.
 **"They sound the same"** and **"I don't know"** are real answers and often the
 most informative ones — please don't guess to be helpful.
 
@@ -81,16 +81,16 @@ carry anything else in this session. Nothing later would mean anything.
 ## Part 1 — What the implant alone sounds like (5 minutes)
 
 > **Condition: IMPLANT ONLY. Take the hearing aid out.**
-> Allow about 30 seconds for her hearing to settle before playing anything.
+> Allow about 30 seconds for their hearing to settle before playing anything.
 
-**This is the highest-value part of the session. Do it while she is fresh.**
+**This is the highest-value part of the session. Do it while they are fresh.**
 
 Play the **plain source file** — the ordinary speech recording, not a dichotic
 file. Then ask:
 
 > Describe what this sounds like now, in your own words.
 
-Let her answer fully before asking the second question:
+Let them answer fully before asking the second question:
 
 > Is the original sound still there underneath, with something added on top of
 > it? Or has it been replaced by something else entirely?
@@ -99,7 +99,7 @@ Let her answer fully before asking the second question:
 
 The simulator is built on a **vocoder**, which *replaces* the fine structure of a
 sound: the original is gone, substituted by noise or pulses shaped by its
-envelope. If her percept is instead the original *plus* an added layer, the
+envelope. If their percept is instead the original *plus* an added layer, the
 architecture is wrong in a way no parameter fitting can reach — because a vocoder
 does not retain the original to layer anything onto.
 
@@ -110,10 +110,10 @@ session made exactly this mistake, and the result was uninterpretable.
 
 ### Recording it
 
-Write her **exact wording**, including hedges and self-corrections. Do not
+Write their **exact wording**, including hedges and self-corrections. Do not
 paraphrase into technical language — *"like a wasp in a tin can"* is better data
 than *"high-frequency distortion"*. There is no established vocabulary for
-electric hearing, so hers becomes the measurement language for this project.
+electric hearing, so theirs becomes the measurement language for this project.
 
 ---
 
@@ -128,8 +128,8 @@ electric hearing, so hers becomes the measurement language for this project.
 the other.
 
 Electric and acoustic hearing have very different loudness growth, so matching
-both channels to the same measured level does **not** make them equally loud to
-her. Until this is calibrated, every later judgement is partly a judgement about
+both channels to the same measured level does **not** make the two ears equally
+loud. Until this is calibrated, every later judgement is partly a judgement about
 which side is louder.
 
 Play the seven `balance_*.wav` files. Each has the same speech in both ears, with
@@ -141,7 +141,7 @@ Record **left / centre / right** and how strongly (1–5).
 
 ### Three rules that make the difference
 
-**Shuffle the order.** Not −9 through +9. A monotonic sweep invites her to track
+**Shuffle the order.** Not −9 through +9. A monotonic sweep invites them to track
 the pattern rather than judge each one.
 
 **Repeat at least three offsets**, unannounced, as trials 8–10. Without repeats
@@ -168,19 +168,19 @@ always pulls — that is a finding, and means the range needs widening
 signal in each ear.
 
 Lowest priority. A previous session already indicated **alternating**; this
-re-confirms it on a clean playback path. If she is flagging, stop instead — the
+re-confirms it on a clean playback path. If they are flagging, stop instead — the
 existing answer is probably right.
 
 > ⚠️ **The `mode_*.wav` files play different audio to each ear on purpose.**
 > The implanted ear gets ordinary speech. The acoustic ear gets a **simulation**
 > of it, which is *meant* to sound electronic and strange. That is the thing
-> being judged. **Tell her this before pressing play**, or she will reasonably
+> being judged. **Tell them this before pressing play**, or they will reasonably
 > assume the file is broken.
 
 ### 3a. Practice — identical audio in both ears
 
 Play the three `practice_*.wav` files first. Same sound both sides, nothing to
-judge. They let her learn how each style *feels* before meeting the harder
+judge. It lets them learn how each style *feels* before meeting the harder
 question — otherwise an unfamiliar interaction and an unfamiliar judgement arrive
 together, and confusion about one looks exactly like difficulty with the other.
 
@@ -209,9 +209,9 @@ unanchored 1–5 is ambiguous in both directions and cannot be compared across
 sessions.
 
 **The specific thing to watch for.** If the two signals fuse into one
-natural-seeming percept under **simultaneous**, she is reporting on the merged
+natural-seeming percept under **simultaneous**, they are reporting on the merged
 sound rather than comparing its parts — and it may not feel like a problem from
-the inside. A previous session showed the tell: she could not say which ear was
+the inside. A previous session showed the tell: the listener could not say which ear was
 carrying which signal. If that recurs, simultaneous is unusable for fitting
 however pleasant it is.
 
@@ -224,11 +224,11 @@ Copy `docs/lab-notebook/TEMPLATE-session.md` to
 
 > ⚠️ **`private/` — not `docs/lab-notebook/`.** Raw session records contain
 > health information and are gitignored. Anything going into the public notebook
-> must be de-identified and about *method*, not about her.
+> must be de-identified and about *method*, not about the participant.
 
 Must be recorded or the session cannot be used:
 
-1. **Her exact words from Part 1**, and whether she said layered or replaced.
+1. **Their exact words from Part 1**, and whether they said layered or replaced.
 2. **The balance offset**, plus the repeat trials, so monotonicity can be checked.
 3. **Playback volume setting**, and confirmation it was played **locally from the
    phone**.
@@ -237,8 +237,8 @@ Must be recorded or the session cannot be used:
 Also, briefly: time of day, alertness at start and end (1–5), audiogram date, and
 anything surprising.
 
-**Record what went wrong.** If she tired at file four, if the balance never
-centred, if a question confused her — that shapes the next session more than the
+**Record what went wrong.** If they tired at file four, if the balance never
+centred, if a question confused them — that shapes the next session more than the
 clean results do.
 
 ---
@@ -248,14 +248,14 @@ clean results do.
 **Both tones in both ears at Part 0.** Stop. The path is mono. Fix that first;
 nothing else in the session can mean anything.
 
-**She can't tell any of the modes apart.** Genuinely possible and not a failure.
+**They can't tell any of the modes apart.** Genuinely possible and not a failure.
 It means the candidates are too similar — we widen the parameter pool and retry
 with more distinct options.
 
 **Everything pulls one way regardless of offset.** The range is too narrow.
 Regenerate with wider offsets.
 
-**She gets tired.** Stop. Part 1 alone is a successful session. Fatigued
+**They get tired.** Stop. Part 1 alone is a successful session. Fatigued
 discrimination data is indistinguishable from a null result, so pushing on
 produces numbers that look like data and are not.
 

@@ -50,7 +50,7 @@ Do not mix Type A and Type B in one session.
 
 ## Raw trial log
 
-| Trial | Presented (blinded label) | Actual condition | Her response | Confidence (1–5) | Verbatim comment |
+| Trial | Presented (blinded label) | Actual condition | Their response | Confidence (1–5) | Verbatim comment |
 |---|---|---|---|---|---|
 | 1 | | | | | |
 | 2 | | | | | |
@@ -63,7 +63,7 @@ Do not mix Type A and Type B in one session.
 ## Verbatim descriptive quotes
 
 > Especially the listener's vocabulary for CI percepts. There is no established language for describing
-> electric hearing; hers becomes this project's measurement language. Record exact wording,
+> electric hearing; theirs becomes this project's measurement language. Record exact wording,
 > including hedges and self-corrections.
 
 ## Results
@@ -150,7 +150,7 @@ Present in shuffled order, not as a sweep.
 **Did simultaneous cause fusion — "one sound" rather than two?** yes / no / unsure
 
 > This is the key question of the session. If yes, simultaneous presentation
-> cannot be used for fitting no matter how pleasant it is, because she would be
+> cannot be used for fitting no matter how pleasant it is, because they would be
 > reporting on a merged percept rather than comparing its parts.
 
 ## Part 3 — Vocabulary (optional)

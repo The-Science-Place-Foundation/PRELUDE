@@ -163,7 +163,7 @@ Logged in `docs/lab-notebook/YYYY-MM-DD-session.md`:
   cannot be recovered)
 - Verbatim descriptive quotes — **especially the vocabulary the listener uses for CI percepts.**
   This is genuinely valuable primary data. There is no established vocabulary for
-  describing electric hearing; hers, accumulated over time, becomes the project's
+  describing electric hearing; theirs, accumulated over time, becomes the project's
   measurement language.
 - Anything surprising, including results that contradict the hypothesis
 

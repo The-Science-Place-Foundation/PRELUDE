@@ -1,0 +1,13 @@
+# Participant identifiers the pre-commit hook blocks.
+#
+# Copy to identifiers.txt (gitignored) and add real names, one
+# case-insensitive regex per line. Lines starting with # are comments.
+#
+# identifiers.txt is deliberately NOT tracked: committing a list of real
+# names to a public repository in order to keep those names out of it
+# would be self-defeating.
+#
+# Examples:
+# Firstname
+# Surname
+# firstname\.surname@

@@ -57,6 +57,27 @@ this reason — see [`tests/fixtures/README.md`](tests/fixtures/README.md).
 **Use de-identified participant codes** (`P01`, `P02`) in all committed material, including
 lab notebook entries. Never names.
 
+**Write about roles, not people.** Use "the listener" or "the participant", and
+they/them where a pronoun is unavoidable. A gendered pronoun narrows a
+de-identified participant toward an individual and adds nothing.
+
+### Enable the pre-commit hook
+
+```bash
+git config core.hooksPath .githooks
+cp .githooks/identifiers.txt.example .githooks/identifiers.txt
+# add any real names to identifiers.txt — it is gitignored
+```
+
+It **blocks** staged audio files, anything under `private/`, device profiles, and
+content matching a participant identifier. It **warns** on clinical values and
+gendered pronouns, which have legitimate uses in domain documentation.
+
+This exists because the rules above were already correct and were still broken in
+practice: a participant's first name reached six pushed commits before anyone
+noticed, and removing it required rewriting public history. A check that runs
+beats a rule that has to be remembered.
+
 ## Development
 
 ```bash
