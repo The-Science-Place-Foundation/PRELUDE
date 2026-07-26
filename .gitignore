@@ -1,0 +1,80 @@
+# ---------------------------------------------------------------------------
+# Audio and research data
+#
+# Audio corpora do not belong in git. They are large, they are binary, they do
+# not diff, and once committed they are effectively permanent. Keep them on
+# disk outside the repository and point `config/paths.yaml` at them.
+#
+# There is a second reason: research audio may contain recordings of human
+# voices. A public repository is not an appropriate place for a participant's
+# voice, even a brief one.
+# ---------------------------------------------------------------------------
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.aac
+*.aiff
+*.opus
+data/
+corpus/
+tests/fixtures/*
+!tests/fixtures/README.md
+!tests/fixtures/.gitkeep
+
+# ---------------------------------------------------------------------------
+# Participant and clinical data — never commit
+#
+# Device programs (MAPs), audiograms, and listening-session records are health
+# information. They stay local. `docs/lab-notebook/` holds only de-identified
+# summaries; raw session data belongs in `private/`.
+# ---------------------------------------------------------------------------
+private/
+*.map
+*.audiogram
+config/device_profile.yaml
+config/paths.yaml
+!config/*.example.yaml
+
+# ---------------------------------------------------------------------------
+# Generated outputs
+# ---------------------------------------------------------------------------
+output/
+runs/
+*.png
+*.pdf
+*.npy
+*.npz
+!docs/**/*.png
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.ipynb_checkpoints/
+
+# ---------------------------------------------------------------------------
+# Editors and OS
+# ---------------------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

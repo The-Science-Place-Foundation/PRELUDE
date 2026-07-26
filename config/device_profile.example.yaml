@@ -1,0 +1,67 @@
+# Device profile — an individual listener's implant configuration.
+#
+# Copy to `config/device_profile.yaml` (gitignored) and fill in from the clinical
+# program printout. Do NOT commit a completed profile: T/C levels, impedances and
+# audiograms are health information.
+#
+# Everything here is optional. The simulator falls back to generic defaults for
+# anything omitted — but a simulator fitted to a real device is a far more useful
+# object than a generic one, and most clinics will provide a program summary on
+# request. Obtaining this is usually the highest-value action available at the
+# start of a study.
+
+listener_id: P01                # de-identified code, never a name
+
+implant:
+  manufacturer:                 # e.g. Cochlear, Advanced Bionics, MED-EL, Oticon Medical
+  implant_model:
+  processor_model:
+  electrode_array:
+  insertion_depth_mm:           # affects frequency-place mismatch; often unrecorded
+  implant_date:                 # year is sufficient; acclimatisation matters
+
+program:
+  strategy:                     # ACE, CIS, FS4, HiRes Optima, ...
+  n_channels:                   # m — active electrodes
+  n_selected:                   # n — maxima per frame; equals n_channels for CIS
+  stimulation_rate_hz:
+  pulse_width_us:
+  deactivated_electrodes: []    # electrodes switched off in clinic
+
+  # The single most valuable item in this file. One row per electrode.
+  # Supply as [low_hz, high_hz] pairs, apical (lowest) first.
+  frequency_allocation: []
+  # - [188, 313]
+  # - [313, 438]
+
+  # Per-electrode levels in device-specific current units. Absolute scale does
+  # not matter to the simulation; the C/T ratio does.
+  t_levels: []
+  c_levels: []
+
+  front_end:
+    agc: true
+    noise_reduction:            # ADRO, SNR-NR, SoftVoice, ...
+    input_dynamic_range_db:
+
+# Contralateral ear. Omit entirely for unilateral listeners.
+# In progressive hearing loss this section is a moving target — re-measure at
+# every audiogram, and design so the system degrades gracefully as it changes.
+contralateral:
+  device:                       # hearing_aid | none | second_implant
+  hearing_aid_model:
+  audiogram_date:
+  audiogram_db_hl:              # air conduction thresholds
+    250:
+    500:
+    1000:
+    2000:
+    4000:
+    8000:
+  frequency_lowering: false     # materially changes the bimodal picture
+  compression_ratio:
+
+streaming:
+  path:                         # ble_asha | manufacturer_accessory | telecoil | phone
+  codec:                        # SBC, AAC, aptX, LC3, proprietary
+  bypasses_front_end_agc:       # unknown for many paths; record if determined

@@ -1,0 +1,30 @@
+name: ACE-like, 8 of 22
+description: >
+  Generic n-of-m peak-picking configuration resembling the Advanced Combination
+  Encoder used as the default strategy in many devices. Eight of twenty-two
+  analysis bands are transmitted per stimulation frame.
+
+  This is a GENERIC device, not any manufacturer's actual implementation and not
+  any individual's clinical program. Where a real frequency allocation table is
+  available, use spacing "table" and supply band_edges.
+
+n_channels: 22
+n_selected: 8
+
+low_freq: 300.0
+high_freq: 8500.0
+spacing: greenwood
+
+envelope_method: hilbert
+envelope_cutoff_hz: 300.0
+
+stimulation_rate_hz: 900.0
+dynamic_range_db: 12.0
+interaction_decay_db: 8.0
+
+carrier: noise
+seed: 0
+
+apply_selection: true
+apply_mapping: true
+apply_interaction: true

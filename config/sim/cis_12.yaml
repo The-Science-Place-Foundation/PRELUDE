@@ -1,0 +1,31 @@
+name: CIS, 12 channels
+description: >
+  Continuous Interleaved Sampling: every channel is stimulated on every cycle,
+  with no peak picking. The standard research baseline, and the configuration
+  most directly comparable to published vocoder studies.
+
+  Because no channels are dropped, this isolates the effects of channel count,
+  envelope bandwidth and current spread from the effects of n-of-m selection.
+  Useful as a control when investigating whether an enhancement is helping the
+  signal itself or merely winning the selection contest.
+
+n_channels: 12
+n_selected: 12
+
+low_freq: 300.0
+high_freq: 8500.0
+spacing: greenwood
+
+envelope_method: hilbert
+envelope_cutoff_hz: 400.0
+
+stimulation_rate_hz: 1200.0
+dynamic_range_db: 12.0
+interaction_decay_db: 8.0
+
+carrier: noise
+seed: 0
+
+apply_selection: false
+apply_mapping: true
+apply_interaction: true
