@@ -21,12 +21,17 @@ right choice - see :class:`PresentationMode`.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from enum import Enum
 
 import numpy as np
 
-from ..audio.loudness import DEFAULT_TARGET_LUFS, prepare_for_playback
+from ..audio.loudness import (
+    DEFAULT_TARGET_LUFS,
+    integrated_lufs,
+    prepare_for_playback,
+)
 
 
 class Ear(str, Enum):
@@ -195,6 +200,49 @@ def build_dichotic(
         acoustic_signal, sample_rate, target_lufs=acoustic_target_lufs
     )
 
+    # Match ACHIEVED loudness, not requested loudness.
+    #
+    # A signal with a high crest factor - a pulsatile simulation especially -
+    # cannot reach the loudness target without breaching the true-peak ceiling,
+    # so the safety stage scales it down and the requested target is silently
+    # missed. Trusting the request would leave the two ears mismatched by as
+    # much as 19 dB, which defeats the entire purpose of level matching and is
+    # actively unsafe: the listener raises the volume to hear the quiet ear and
+    # the other ear becomes far too loud.
+    #
+    # The intended *difference* between the two targets is preserved; only the
+    # absolute level moves, so a balance offset established by calibration still
+    # applies.
+    requested_delta = implant_target_lufs - acoustic_target_lufs
+    achieved_delta = implant_report.output_lufs - acoustic_report.output_lufs
+    correction = achieved_delta - requested_delta
+
+    if abs(correction) > 0.1:
+        # Bring the louder channel down; never push a channel up, which could
+        # re-breach the peak ceiling.
+        if correction > 0:
+            implant_safe = implant_safe * (10.0 ** (-correction / 20.0))
+        else:
+            acoustic_safe = acoustic_safe * (10.0 ** (correction / 20.0))
+
+    implant_achieved = integrated_lufs(implant_safe, sample_rate)
+    acoustic_achieved = integrated_lufs(acoustic_safe, sample_rate)
+
+    headroom_cost = min(
+        implant_report.output_lufs - implant_target_lufs,
+        acoustic_report.output_lufs - acoustic_target_lufs,
+    )
+    if headroom_cost < -6.0:
+        warnings.warn(
+            f"a channel fell {abs(headroom_cost):.1f} dB short of its loudness "
+            f"target because its peaks hit the safety ceiling. Both channels "
+            f"have been matched at the lower level, so the ears are still "
+            f"balanced, but the stimulus is quiet and the listener may raise "
+            f"the volume. A very high crest factor - the pulse carrier is the "
+            f"usual cause - is worth reducing before a listening session.",
+            stacklevel=2,
+        )
+
     if mode is PresentationMode.SIMULTANEOUS:
         a, b = implant_safe, acoustic_safe
     elif mode is PresentationMode.ALTERNATING:
@@ -213,8 +261,8 @@ def build_dichotic(
         sample_rate=sample_rate,
         mode=mode,
         assignment=assignment,
-        implant_lufs=implant_report.output_lufs,
-        acoustic_lufs=acoustic_report.output_lufs,
+        implant_lufs=implant_achieved,
+        acoustic_lufs=acoustic_achieved,
         segment_ms=segment_ms if mode is PresentationMode.ALTERNATING else None,
     )
 
@@ -233,15 +281,39 @@ def _ramp(n: int, sample_rate: int, ramp_ms: float) -> np.ndarray:
 def _alternate(
     x: np.ndarray, y: np.ndarray, sample_rate: int, segment_ms: int, ramp_ms: float
 ) -> tuple[np.ndarray, np.ndarray]:
+    """Play each window to one ear, then the *same* window to the other.
+
+    Each source window is heard twice - once per ear - so the listener compares
+    two renderings of identical material. The output is therefore about twice as
+    long as the input.
+
+    The obvious alternative, splitting the timeline so odd windows go to one ear
+    and even windows to the other, is wrong and was the original implementation
+    here. It makes each ear hear *different passages*, so the listener compares
+    different music rather than two versions of the same music. With material
+    whose loudness varies over time the effect is severe: the synthetic melody
+    used for calibration differs by nearly 13 dB between alternate 500 ms
+    windows, which handed one ear all the note onsets and the other all the
+    decays.
+    """
     seg = max(1, int(segment_ms / 1000 * sample_rate))
-    a, b = np.zeros_like(x), np.zeros_like(y)
-    for i, start in enumerate(range(0, len(x), seg)):
-        stop = min(start + seg, len(x))
-        gate = _ramp(stop - start, sample_rate, ramp_ms)
-        if i % 2 == 0:
-            a[start:stop] = x[start:stop] * gate
-        else:
-            b[start:stop] = y[start:stop] * gate
+    n_windows = max(1, int(np.ceil(len(x) / seg)))
+    total = n_windows * seg * 2
+
+    a, b = np.zeros(total), np.zeros(total)
+    for i in range(n_windows):
+        src_start = i * seg
+        src_stop = min(src_start + seg, len(x))
+        length = src_stop - src_start
+        if length <= 0:
+            break
+        gate = _ramp(length, sample_rate, ramp_ms)
+
+        a_start = i * 2 * seg
+        b_start = a_start + seg
+        a[a_start : a_start + length] = x[src_start:src_stop] * gate
+        b[b_start : b_start + length] = y[src_start:src_stop] * gate
+
     return a, b
 
 

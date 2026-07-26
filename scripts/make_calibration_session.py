@@ -157,9 +157,24 @@ def main() -> int:
     # of the three modes. Same content throughout, so the only variable is how
     # the two are laid out in time.
     print("\nPart 2 - presentation mode")
+    # Noise carrier, not pulse, for listening material.
+    #
+    # The pulse carrier models the stimulation pattern faithfully and scores
+    # better on envelope correlation, but its crest factor is around 33 dB
+    # against 16 dB for noise. That much peakiness cannot reach a normal
+    # loudness target without breaching the true-peak ceiling, so the result
+    # arrives roughly 12 dB quiet and sounds clicky. A listener does not
+    # perceive individual pulses at 900 pps either - they integrate.
+    #
+    # The pulsatile structure is preserved where it belongs, in the
+    # electrodogram. Resynthesis exists to render the percept audibly, which is
+    # a different job.
+    #
+    # Defaults here match a Cochlear Nucleus platform: 22 electrodes, ACE-style
+    # 8-of-22 peak picking, 900 pps.
     sim = simulate(src, SR, SimulatorConfig(
-        n_channels=22, n_selected=8, carrier="pulse",
-        stimulation_rate_hz=900.0, synchronization=1.0, seed=0,
+        n_channels=22, n_selected=8, carrier="noise",
+        stimulation_rate_hz=900.0, seed=0,
     )).audio
 
     for mode in PresentationMode:

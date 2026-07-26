@@ -314,3 +314,77 @@ class TestDichotic:
             build_dichotic(
                 np.stack([src, src]), cand, self.SR, EarAssignment(Ear.RIGHT)
             )
+
+    def test_alternating_gives_both_ears_the_same_material(self):
+        """Each ear must hear the SAME passage, not alternate slices of it.
+
+        Regression test for a real defect. The original implementation split the
+        timeline - odd windows to one ear, even to the other - so the listener
+        compared different music rather than two renderings of the same music.
+        With material whose loudness varies over time the effect was severe: a
+        melody differing ~13 dB between alternate 500 ms windows handed one ear
+        all the note onsets and the other all the decays.
+        """
+        sr = self.SR
+        t = np.arange(4 * sr) / sr
+        # Loud first half-second of each second, quiet for the rest - the worst
+        # case for timeline splitting.
+        ramp = np.where((t % 1.0) < 0.5, 1.0, 0.05)
+        src = 0.2 * np.sin(2 * np.pi * 300 * t) * ramp
+
+        d = build_dichotic(
+            src, src, sr, EarAssignment(Ear.RIGHT),
+            mode=PresentationMode.ALTERNATING, segment_ms=500,
+        )
+        left = d.samples[0][np.abs(d.samples[0]) > 1e-4]
+        right = d.samples[1][np.abs(d.samples[1]) > 1e-4]
+        lr = np.sqrt((left**2).mean()) / np.sqrt((right**2).mean())
+        assert 0.7 < lr < 1.4, (
+            f"active-segment RMS ratio {lr:.2f} - the ears are receiving "
+            f"different material"
+        )
+
+    def test_alternating_roughly_doubles_duration(self):
+        """Each window is heard twice, once per ear."""
+        sr = self.SR
+        src = 0.2 * np.sin(2 * np.pi * 300 * np.arange(2 * sr) / sr)
+        d = build_dichotic(
+            src, src, sr, EarAssignment(Ear.RIGHT),
+            mode=PresentationMode.ALTERNATING, segment_ms=500,
+        )
+        assert 3.5 < d.duration_s < 4.5
+
+    def test_ears_are_level_matched_despite_peak_limiting(self):
+        """Match ACHIEVED loudness, not requested loudness.
+
+        A high-crest signal cannot reach the loudness target without breaching
+        the true-peak ceiling, so the safety stage scales it down and the request
+        is silently missed. Trusting the request left the ears up to 19 dB apart
+        - which defeats level matching and is unsafe, since the listener raises
+        the volume for the quiet ear and the other becomes far too loud.
+        """
+        sr = self.SR
+        t = np.arange(2 * sr) / sr
+        smooth = 0.2 * np.sin(2 * np.pi * 300 * t)
+        spiky = np.zeros_like(t)
+        spiky[::4000] = 1.0  # very sparse: ~11 dB of headroom lost to limiting
+
+        with pytest.warns(UserWarning, match="safety ceiling"):
+            d = build_dichotic(
+                smooth, spiky, sr, EarAssignment(Ear.RIGHT),
+                mode=PresentationMode.SIMULTANEOUS,
+            )
+        assert abs(d.implant_lufs - d.acoustic_lufs) < 1.0, (
+            f"ears differ by {abs(d.implant_lufs - d.acoustic_lufs):.1f} dB"
+        )
+
+    def test_balance_offset_is_preserved_through_matching(self):
+        """Level matching must not erase a deliberate per-ear offset."""
+        sr = self.SR
+        src = 0.2 * np.sin(2 * np.pi * 300 * np.arange(2 * sr) / sr)
+        d = build_dichotic(
+            src, src, sr, EarAssignment(Ear.RIGHT),
+            mode=PresentationMode.SIMULTANEOUS,
+            implant_target_lufs=-17.0, acoustic_target_lufs=-23.0,
+        )
+        assert d.implant_lufs - d.acoustic_lufs == pytest.approx(6.0, abs=0.5)
