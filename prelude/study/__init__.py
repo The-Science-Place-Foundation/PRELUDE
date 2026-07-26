@@ -27,6 +27,14 @@ cannot be used to characterise the implant.
 """
 
 from .conditions import CONDITION_FOR_PURPOSE, ConditionChange, ListeningCondition
+from .dichotic import (
+    DichoticStimulus,
+    Ear,
+    EarAssignment,
+    PresentationMode,
+    balance_prompt,
+    build_dichotic,
+)
 from .session import (
     CATCH_TRIAL_EVERY,
     MAX_ACTIVE_MINUTES,
@@ -48,14 +56,20 @@ __all__ = [
     "MAX_ACTIVE_MINUTES",
     "Block",
     "ConditionChange",
+    "DichoticStimulus",
+    "Ear",
+    "EarAssignment",
     "ListeningCondition",
     "Session",
     "SessionTooLongError",
+    "PresentationMode",
     "Stimulus",
     "Trial",
     "TrialKind",
     "TrialResult",
+    "balance_prompt",
     "build_block",
+    "build_dichotic",
     "build_session",
     "catch_trial_rate",
     "export_session",

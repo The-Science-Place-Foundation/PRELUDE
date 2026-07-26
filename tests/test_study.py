@@ -15,15 +15,20 @@ from __future__ import annotations
 import json
 import random
 
+import numpy as np
 import pytest
 
 from prelude.study import (
     Block,
+    Ear,
+    EarAssignment,
     ListeningCondition,
+    PresentationMode,
     SessionTooLongError,
     Stimulus,
     TrialResult,
     build_block,
+    build_dichotic,
     build_session,
     catch_trial_rate,
     export_session,
@@ -222,3 +227,90 @@ class TestValidityWarnings:
             for i, t in enumerate(s.all_trials)
         ]
         assert summarise(s, results)["validity_warnings"] == []
+
+
+class TestDichotic:
+    """Different audio to each ear from one stereo file.
+
+    This is what makes direct comparison possible without device swaps: the
+    implanted ear hears a source and produces the electric percept, while the
+    contralateral ear hears a candidate simulation of it.
+    """
+
+    SR = 20000
+
+    def _signals(self):
+        t = np.arange(self.SR) / self.SR
+        return 0.2 * np.sin(2 * np.pi * 220 * t), 0.2 * np.sin(2 * np.pi * 880 * t)
+
+    def test_ear_assignment_has_no_default(self):
+        """Getting this backwards silently inverts the experiment."""
+        with pytest.raises(TypeError):
+            EarAssignment()
+
+    def test_signal_reaches_the_assigned_ear(self):
+        src, cand = self._signals()
+        for implant_ear in (Ear.LEFT, Ear.RIGHT):
+            d = build_dichotic(
+                src, cand, self.SR, EarAssignment(implant_ear),
+                mode=PresentationMode.SIMULTANEOUS,
+            )
+            impl = d.channel(implant_ear)
+            ac = d.channel(implant_ear.other)
+            # The implant ear carries 220 Hz, the acoustic ear 880 Hz.
+            f = np.fft.rfftfreq(len(impl), 1 / self.SR)
+            assert f[np.argmax(np.abs(np.fft.rfft(impl)))] == pytest.approx(220, abs=5)
+            assert f[np.argmax(np.abs(np.fft.rfft(ac)))] == pytest.approx(880, abs=5)
+
+    def test_alternating_isolates_the_ears(self):
+        """Only one ear carries signal at a time, so there is nothing to fuse."""
+        src, cand = self._signals()
+        d = build_dichotic(
+            src, cand, self.SR, EarAssignment(Ear.RIGHT),
+            mode=PresentationMode.ALTERNATING, segment_ms=250,
+        )
+        both = (np.abs(d.samples[0]) > 1e-4) & (np.abs(d.samples[1]) > 1e-4)
+        assert both.mean() < 0.01, "ears overlap during alternation"
+
+    def test_simultaneous_does_not_isolate(self):
+        src, cand = self._signals()
+        d = build_dichotic(
+            src, cand, self.SR, EarAssignment(Ear.RIGHT),
+            mode=PresentationMode.SIMULTANEOUS,
+        )
+        both = (np.abs(d.samples[0]) > 1e-4) & (np.abs(d.samples[1]) > 1e-4)
+        assert both.mean() > 0.9
+
+    def test_each_channel_is_level_matched_independently(self):
+        """Electric and acoustic loudness growth differ; channels normalise apart."""
+        src, cand = self._signals()
+        d = build_dichotic(
+            src * 10, cand * 0.01, self.SR, EarAssignment(Ear.RIGHT),
+            mode=PresentationMode.SIMULTANEOUS,
+        )
+        assert d.implant_lufs == pytest.approx(d.acoustic_lufs, abs=1.0)
+
+    def test_alternation_has_no_clicks(self):
+        """Abrupt switching would click, which is unpleasant and an extra cue."""
+        src, cand = self._signals()
+        d = build_dichotic(
+            src, cand, self.SR, EarAssignment(Ear.RIGHT),
+            mode=PresentationMode.ALTERNATING, segment_ms=250, ramp_ms=10,
+        )
+        step = np.abs(np.diff(d.samples[0])).max()
+        assert step < 0.1, f"discontinuity of {step:.3f} at a segment boundary"
+
+    def test_sequential_is_longer_than_its_parts(self):
+        src, cand = self._signals()
+        d = build_dichotic(
+            src, cand, self.SR, EarAssignment(Ear.RIGHT),
+            mode=PresentationMode.SEQUENTIAL,
+        )
+        assert d.duration_s > 2.0
+
+    def test_rejects_stereo_input(self):
+        src, cand = self._signals()
+        with pytest.raises(ValueError, match="mono"):
+            build_dichotic(
+                np.stack([src, src]), cand, self.SR, EarAssignment(Ear.RIGHT)
+            )
