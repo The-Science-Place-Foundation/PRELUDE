@@ -36,7 +36,7 @@ import numpy as np
 from .envelope import extract_envelope
 from .filterbank import Filterbank, design_filterbank
 from .interaction import apply_interaction, effective_channels, spread_matrix
-from .mapping import LoudnessMap, apply_loudness_map, invert_loudness_map
+from .mapping import LoudnessMap, apply_loudness_map, levels_to_amplitude
 from .resynthesis import resynthesise
 from .selection import select_n_of_m, selection_stability
 
@@ -242,8 +242,11 @@ def simulate(
 
     electrodogram = stim.copy()
 
+    # levels_to_amplitude, not invert_loudness_map: the compression must survive
+    # into the audio, since the narrow electrical dynamic range is the constraint
+    # being simulated. Inverting the map would hand it back.
     acoustic = (
-        invert_loudness_map(stim, loudness_map, reference=reference)
+        levels_to_amplitude(stim, loudness_map, reference=reference)
         if config.apply_mapping
         else stim
     )

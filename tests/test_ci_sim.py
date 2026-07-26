@@ -28,6 +28,7 @@ from prelude.ci_sim import (
     greenwood_frequency,
     greenwood_position,
     invert_loudness_map,
+    levels_to_amplitude,
     pulse_carrier,
     resynthesise,
     select_n_of_m,
@@ -176,6 +177,32 @@ class TestLoudnessMapping:
         active = out[out > 0]
         span_db = 20 * np.log10(active.max() / active.min())
         assert span_db <= 12.5
+
+    def test_compression_survives_into_the_audio(self):
+        """The narrow electrical dynamic range must reach the listener.
+
+        Regression test for a real defect. The pipeline used to compress into
+        [T, C] and then invert the map before resynthesis, restoring the original
+        dynamic range to floating-point precision. The electrodogram showed the
+        constraint; the audio did not. Since that constraint is the defining
+        limitation of electric hearing, the simulation was quietly understating
+        the very thing it exists to demonstrate.
+        """
+        lm = LoudnessMap.uniform(4, dynamic_range_db=12.0)
+        env = np.tile(np.logspace(-3, 0, 200), (4, 1))  # 60 dB span
+        out = levels_to_amplitude(apply_loudness_map(env, lm, reference=1.0), lm)
+        audible = out[0][out[0] > 0]
+        out_db = 20 * np.log10(audible.max() / audible.min())
+        assert out_db < 40, f"output span {out_db:.1f} dB - compression was undone"
+        assert out_db > 5, f"output span {out_db:.1f} dB - over-compressed to nothing"
+
+    def test_invert_is_a_true_inverse(self):
+        """invert_loudness_map stays exact - it is for analysis, not resynthesis."""
+        lm = LoudnessMap.uniform(3, dynamic_range_db=12.0)
+        env = np.tile(np.logspace(-2, 0, 100), (3, 1))
+        back = invert_loudness_map(apply_loudness_map(env, lm, reference=1.0), lm, 1.0)
+        ok = env[0] > 10 ** (lm.input_floor_db / 20)
+        assert np.allclose(back[0][ok], env[0][ok], rtol=1e-9)
 
     def test_roundtrip_is_monotonic(self):
         lm = LoudnessMap.uniform(3, dynamic_range_db=12.0)

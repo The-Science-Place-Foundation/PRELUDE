@@ -29,7 +29,12 @@ from .filterbank import (
     greenwood_space,
 )
 from .interaction import apply_interaction, effective_channels, spread_matrix
-from .mapping import LoudnessMap, apply_loudness_map, invert_loudness_map
+from .mapping import (
+    LoudnessMap,
+    apply_loudness_map,
+    invert_loudness_map,
+    levels_to_amplitude,
+)
 from .pipeline import SimulationResult, SimulatorConfig, simulate
 from .resynthesis import pulse_carrier, resynthesise
 from .selection import select_n_of_m, selection_stability
@@ -50,6 +55,7 @@ __all__ = [
     "greenwood_position",
     "greenwood_space",
     "invert_loudness_map",
+    "levels_to_amplitude",
     "pulse_carrier",
     "resynthesise",
     "select_n_of_m",

@@ -207,11 +207,18 @@ This work builds on the noise-vocoder simulation method introduced by
 **Shannon et al. (1995)**, *Speech recognition with primarily temporal cues*,
 Science 270(5234).
 
-Development was informed by two existing simulators: the **Cochlear Implant
-Simulation** package from the *Universidad de Granada* (de la Torre Vega et al.,
-2004), and a MATLAB CI demonstration by **Amir Rahimzadeh** (HTW Berlin, 2013)
-built on **Malcolm Slaney's Auditory Toolbox**. Neither is redistributed here;
-PRELUDE is an independent implementation of published methods.
+PRELUDE is an **independent implementation of published methods**. Every stage is
+built from the primary literature cited in
+[`docs/01-DOMAIN-PRIMER.md`](docs/01-DOMAIN-PRIMER.md); no third-party simulator
+code is used, derived from, or redistributed here.
+
+Two existing simulators served as black-box references during development, and
+their published documentation clarified parameter semantics: the **Cochlear
+Implant Simulation** package from the *Universidad de Granada* (de la Torre Vega,
+Bastarrica Martí, de la Torre Vega & Sainz Quevedo, 2004), and a MATLAB CI
+demonstration by **Amir Rahimzadeh** (HTW Berlin, 2013) built on **Malcolm
+Slaney's Auditory Toolbox**. We are grateful to both groups for publishing their
+tools and documentation.
 
 ## Citation
 

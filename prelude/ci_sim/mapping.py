@@ -124,17 +124,54 @@ def apply_loudness_map(
     return np.where(audible, out, 0.0)
 
 
+def levels_to_amplitude(
+    levels: np.ndarray,
+    loudness_map: LoudnessMap,
+    reference: float = 1.0,
+) -> np.ndarray:
+    """Convert stimulation levels to an audible amplitude for resynthesis.
+
+    **This converts units without undoing the compression**, and that distinction
+    is the entire point of the stage.
+
+    Resynthesis has to produce something a normal-hearing person can listen to,
+    so stimulation levels must become amplitudes. The obvious way to do that is
+    to invert the loudness map - but inverting it restores the original dynamic
+    range and thereby erases the constraint being simulated. An implant
+    compresses a wide acoustic range into roughly 6-20 dB of electrical range,
+    and that compression is *the* defining limitation of electric hearing. A
+    simulation that hands it back is not simulating an implant.
+
+    Instead the position within ``[T, C]`` is mapped linearly onto the audible
+    range: the listener's full usable range becomes the output's full range,
+    while the compressive input-to-output relationship is preserved. With the
+    default parameters a 60 dB input span emerges as roughly 25 dB.
+
+    Channels at zero - sub-threshold, or not selected by n-of-m - stay silent.
+    """
+    levels = np.atleast_2d(np.asarray(levels, dtype=float))
+    t = loudness_map.t_level[:, None]
+    c_lvl = loudness_map.c_level[:, None]
+
+    frac = np.clip((levels - t) / (c_lvl - t), 0.0, 1.0)
+    return np.where(levels > 0, frac * reference, 0.0)
+
+
 def invert_loudness_map(
     levels: np.ndarray,
     loudness_map: LoudnessMap,
     reference: float = 1.0,
 ) -> np.ndarray:
-    """Map stimulation levels back to acoustic amplitude, for resynthesis.
+    """Recover the original acoustic envelope from stimulation levels.
 
-    Resynthesis needs an acoustic-domain envelope. Passing the compressed levels
-    straight to a carrier would apply the compression twice - once here and again
-    in the listener's own perception - so the mapping is inverted before the
-    signal is turned back into sound.
+    A true inverse of :func:`apply_loudness_map`, accurate to floating-point
+    precision.
+
+    **Not for resynthesis** - use :func:`levels_to_amplitude` instead. Inverting
+    the map restores the dynamic range the implant removed, which is precisely
+    the degradation a simulation exists to demonstrate. This function is for
+    analysis: verifying the mapping is well conditioned, or recovering the
+    pre-compression envelope for comparison.
     """
     levels = np.atleast_2d(np.asarray(levels, dtype=float))
     t = loudness_map.t_level[:, None]
