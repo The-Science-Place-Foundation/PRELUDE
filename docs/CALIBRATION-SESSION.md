@@ -70,11 +70,31 @@ always pulls — that itself is a finding, and means we need a wider range.
 
 ## Part 2 — Presentation mode (about 10 minutes)
 
-The core comparison plays a source into the implanted ear and a candidate
-simulation into the acoustic ear. There are three ways to lay that out in time,
-and which one works best is genuinely an open question for each listener.
+> ⚠️ **The `mode_*.wav` files play different audio to each ear on purpose.**
+>
+> The implanted ear gets the ordinary melody. The acoustic ear gets a **CI
+> simulation** of it, which is *meant* to sound electronic, buzzy and strange.
+> That is the thing being judged — whether our simulation matches what her
+> implant actually does. If both ears carried the same audio there would be
+> nothing to compare.
+>
+> This reads as a fault if you are not expecting it. Say so before playing them.
 
 **Condition: both devices in.**
+
+### 2a. Practice — identical audio in both ears
+
+Play the three `practice_*.wav` files first. Same sound both sides; nothing to
+judge. They exist so she learns how each style *feels* — which ear is playing,
+whether the switching is comfortable — before meeting the harder question.
+
+Without this she meets an unfamiliar interaction and an unfamiliar judgement in
+the same moment, and confusion about one looks exactly like difficulty with the
+other.
+
+Ask only: **does this way of presenting feel comfortable?**
+
+### 2b. The real comparison
 
 | File | What it does |
 |---|---|

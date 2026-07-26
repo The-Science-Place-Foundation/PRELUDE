@@ -82,6 +82,82 @@ def _channel_check(sample_rate: int) -> np.ndarray:
     return np.stack([left, right])
 
 
+def _write_readme(out: Path, assignment: EarAssignment) -> None:
+    """Plain-language guide, written into the folder itself.
+
+    The mode_*.wav files deliberately play different audio to each ear, and that
+    reads as a fault unless it is stated plainly and where someone will actually
+    look. Written for the listener, not the investigator - no jargon.
+    """
+    implant = assignment.implant_ear.value.upper()
+    acoustic = assignment.acoustic_ear.value.upper()
+    (out / "READ-ME-FIRST.txt").write_text(f"""CALIBRATION SESSION - what each file is
+=======================================
+
+Setup: implant in the {implant} ear, hearing aid in the {acoustic} ear.
+So: {implant} channel -> implant.  {acoustic} channel -> hearing aid.
+
+
+IMPORTANT - THE FILES ARE NOT ALL "SAME SOUND BOTH EARS"
+--------------------------------------------------------
+
+Some files deliberately play DIFFERENT audio to each ear. That is not a
+fault. It is the entire point of the exercise.
+
+
+1. channel_check.wav        (5.5s)  -- run this first
+   Tests whether your audio path keeps the ears separate at all.
+
+     0.0-1.5s   LEFT ear only  (low tone)
+     2.0-3.5s   RIGHT ear only (high tone)
+     4.0-5.5s   both ears, different pitch each side
+
+   If both tones arrive in both ears, that audio path mixes to mono and
+   cannot be used for anything else here.
+
+
+2. balance_*.wav            (6s each)  -- SAME sound in both ears
+   Seven files, same melody both sides, {implant.lower()} side offset by a set
+   amount. Find the one that sits in the middle of your head.
+   Play them in a random order, not from lowest to highest.
+
+
+3. practice_*.wav           -- SAME sound in both ears
+   Three files, one per presentation style. Identical audio on both sides.
+   These are just to get used to how each style feels:
+
+     practice_simultaneous  both ears at once
+     practice_alternating   swaps ear every half second
+     practice_sequential    one ear, pause, then the other
+
+   Nothing to judge. Just notice which one feels comfortable.
+
+
+4. mode_*.wav               -- DIFFERENT sound in each ear, ON PURPOSE
+   The real task, in the same three styles.
+
+     {implant} ear (implant)      the ordinary melody
+     {acoustic} ear (hearing aid)   our GUESS at what the implant makes it
+                                sound like
+
+   The {acoustic.lower()} side is MEANT to sound electronic, buzzy and strange.
+   It is a simulation of implant hearing. If it sounded the same as the
+   {implant.lower()} side there would be nothing to compare.
+
+   The question is: does the strange {acoustic.lower()}-side sound match what
+   the {implant.lower()} side sounds like through the implant?
+
+   And which of the three styles made that easiest to judge?
+
+
+If anything is uncomfortably loud, stop and turn it down before going on.
+You can stop at any point, for any reason. "They sound the same" and
+"I don't know" are both real, useful answers.
+
+Full instructions: docs/CALIBRATION-SESSION.md
+""")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--implant-ear", choices=["left", "right"], required=True,
@@ -177,12 +253,33 @@ def main() -> int:
         stimulation_rate_hz=900.0, seed=0,
     )).audio
 
+    # Practice files first: the SAME audio in both ears. These separate
+    # learning the mechanics - which ear is playing, is the switching
+    # comfortable - from the actual task of comparing a source against a
+    # simulation. Without them a listener meets an unfamiliar interaction and an
+    # unfamiliar judgement at the same moment, and confusion about one reads as
+    # difficulty with the other.
+    for mode in PresentationMode:
+        d = build_dichotic(src, src, SR, assignment, mode=mode, segment_ms=500)
+        name = f"practice_{mode.value}.wav"
+        save_audio(out / name, Audio(d.samples, SR))
+        manifest.setdefault("part2_practice", []).append({
+            "file": name, "mode": mode.value,
+            "content": "identical audio in both ears - for learning the mechanics",
+            "duration_s": round(d.duration_s, 2),
+        })
+        print(f"  {name}  (practice, identical both ears)")
+
     for mode in PresentationMode:
         d = build_dichotic(src, sim, SR, assignment, mode=mode, segment_ms=500)
         name = f"mode_{mode.value}.wav"
         save_audio(out / name, Audio(d.samples, SR))
         manifest["part2_modes"].append({
             "file": name, "mode": mode.value,
+            "implant_ear_hears": "the clean source",
+            "acoustic_ear_hears": "a CI SIMULATION of it - it is MEANT to sound "
+                                  "electronic and different. That is the thing "
+                                  "being judged.",
             "duration_s": round(d.duration_s, 2),
             "ear_overlap_pct": round(float(np.mean(
                 (np.abs(d.samples[0]) > 1e-4) & (np.abs(d.samples[1]) > 1e-4)
@@ -191,6 +288,7 @@ def main() -> int:
         print(f"  {name}  ({d.duration_s:.1f}s)")
 
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    _write_readme(out, assignment)
     print(f"\nWrote {out}/ - see docs/CALIBRATION-SESSION.md for how to run it.")
     print("Play these from her phone over her normal Bluetooth stream.")
     return 0
