@@ -136,3 +136,50 @@ thresholds have deliberately **not** been lowered to make the suite green.
       disagreement can be attributed rather than merely observed
 - [ ] Test the hypothesis that heavy current spread reproduces CI_SIM's
       multi-band energy under n_on = 2
+
+---
+
+## Addendum — parameter search, and a reference that stopped being usable
+
+**Global search.** 2,432 configurations against the speech target. Best achievable
+**0.745**, against 0.636 for the straight `.par` port — so the earlier failure was
+parameter translation, not a capability limit. The threshold of 0.70 is reachable.
+
+The top twelve results agreed strikingly: **pulse carrier in all twelve**,
+**n-of-m = 2 in all twelve** (confirming `n_on` is maxima selection), 21–22
+channels, and **loudness mapping off in all twelve**.
+
+**That last one exposed a defect.** The mapping stage was a no-op: the pipeline
+compressed into `[T, C]` and then inverted the map exactly (measured relative
+error 2.4e-16), so a 60 dB span emerged at 59.7 dB. The electrodogram carried the
+electrical dynamic range constraint; the audio did not. Fixed — see
+`levels_to_amplitude`. A 60 dB span now emerges at 24.5 dB.
+
+**And here is the important part.** With the fix in place, agreement with CI_SIM
+gets *worse*: 0.745 → 0.598. Making the simulator more faithful to the physiology
+moved it **away** from the reference.
+
+Only two readings are possible. Either CI_SIM does not render the electrical
+dynamic range constraint into its audio output — plausible, since it may invert
+its own mapping exactly as PRELUDE used to — or PRELUDE's compression is
+mis-shaped. Nothing available here distinguishes them.
+
+## Conclusion: stop optimising against this reference
+
+The two references now disagree about something fundamental, and no amount of
+further sweeping can adjudicate between them. Continuing to fit CI_SIM would mean
+choosing to reproduce its behaviour *including wherever it is wrong*, on no
+evidence beyond it having come first.
+
+CI_SIM was only ever a proxy. Its value here came from its settings having been
+tuned, over at least eight iterations, against one listener's reported perception
+— so what carries the validation is **her judgement**, not the tool. That
+judgement is directly available and does not need an intermediary.
+
+**Revised status of these fixtures:** demoted from fitting target to regression
+guard. They pin simulator behaviour so that unintended changes are noticed. They
+are no longer the thing being optimised, and the 0.70 threshold should be read as
+"still behaving as it did", not "correct".
+
+The fitting target is now direct perceptual comparison — Type A sessions per
+`05-EVALUATION-PROTOCOL.md`.
