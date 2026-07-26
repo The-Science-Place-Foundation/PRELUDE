@@ -159,6 +159,26 @@ def _information_gain(a: int, b: int, post: list[float], dist: list[list[float]]
     return prior - (pa * ent(la) + pb * ent(lb))
 
 
+def _persist(sess: dict) -> None:
+    """Write the session to disk now, not at the end.
+
+    A session that is abandoned by closing the app never reaches /api/finish.
+    Holding responses in memory until then lost one of the first two real
+    sessions outright. Every response is worth keeping whether or not the
+    listener taps through to the end - and stopping early is a normal, expected
+    outcome that the interface actively encourages.
+    """
+    try:
+        SESSION_DIR.mkdir(parents=True, exist_ok=True)
+        record = {k: v for k, v in sess.items() if k != "catch_positions"}
+        out = SESSION_DIR / f"{sess['started_at'][:10]}-{sess['session_id']}.json"
+        out.write_text(json.dumps(record, indent=2))
+    except OSError:
+        # Losing the write is survivable; losing the session mid-flight is not,
+        # so never let a disk problem interrupt a listener.
+        pass
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -177,6 +197,7 @@ def _new_session(listener: str = "P01") -> dict:
         "started_at": _now(),
         "trials": [],
         "responses": [],
+        "complete": False,
         "catch_positions": set(),
     }
 
@@ -355,6 +376,7 @@ class Handler(BaseHTTPRequestHandler):
                 other = shown[trial["presentation_order"][1 - chose]]
                 rec["chose_idx"], rec["rejected_idx"] = picked, other
             sess["responses"].append(rec)
+            _persist(sess)   # durable immediately, not only on finish
             self._json(200, {"trial": _next_trial(sess)})
             return
 
@@ -398,6 +420,7 @@ class Handler(BaseHTTPRequestHandler):
                     "converged": post[top] >= 0.80,
                     "posterior": [round(p, 4) for p in post],
                 }
+            sess["complete"] = True
             sess["finished_at"] = _now()
             sess["notes"] = payload.get("notes", "")
             sess["ended_early"] = bool(payload.get("ended_early"))

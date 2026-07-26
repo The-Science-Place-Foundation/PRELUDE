@@ -29,6 +29,22 @@ from ..ci_sim import SimulatorConfig, design_filterbank, extract_envelope, simul
 ANALYSIS_BANDS = 16
 ANALYSIS_LOW_HZ = 300.0
 ANALYSIS_HIGH_HZ = 7500.0
+
+#: Envelope cutoffs at which the comparison is made, in Hz.
+#:
+#: **Multi-scale, and that is not decoration.** A single low cutoff smooths away
+#: every difference that lives above it, so the measure silently reports
+#: "identical" for parameters it simply cannot resolve. Compared at 50 Hz alone,
+#: two simulations whose envelope bandwidths were 300 and 900 Hz scored 0.010
+#: apart - and were discarded as indistinguishable when nothing had established
+#: that a listener could not hear the difference.
+#:
+#: The slow scale captures the modulation an implant transmits; the faster ones
+#: capture the temporal detail that separates one configuration from another.
+#: The highest must exceed any envelope bandwidth being compared.
+ANALYSIS_CUTOFFS_HZ = (50.0, 200.0, 800.0)
+
+#: Retained for callers that want the slow scale alone.
 ANALYSIS_ENVELOPE_CUTOFF_HZ = 50.0
 
 
@@ -64,26 +80,47 @@ class CandidatePool:
         return pairs[:k]
 
 
-def envelope_distance(a: np.ndarray, b: np.ndarray, sample_rate: int) -> float:
+def envelope_distance(
+    a: np.ndarray,
+    b: np.ndarray,
+    sample_rate: int,
+    cutoffs: tuple[float, ...] = ANALYSIS_CUTOFFS_HZ,
+) -> float:
     """Perceptual distance in [0, 2]; 0 identical, 1 uncorrelated.
 
-    One minus the mean per-band envelope correlation. Bands whose envelope is
-    flat in either signal are skipped, since correlation is undefined there.
+    One minus the mean per-band envelope correlation, averaged over several
+    envelope cutoffs. Bands whose envelope is flat in either signal are skipped,
+    since correlation is undefined there.
+
+    The multi-scale average matters: measured at one low cutoff, this returns
+    near-zero for any difference living above that cutoff, and a caller cannot
+    tell "these are the same" from "I cannot see this". Two settings differing
+    only in envelope bandwidth, or in stimulation rate, were reported as
+    identical for exactly that reason.
     """
     n = min(len(a), len(b))
     if n == 0:
         return 1.0
     fb = design_filterbank(
-        sample_rate, ANALYSIS_BANDS, ANALYSIS_LOW_HZ, min(ANALYSIS_HIGH_HZ, sample_rate / 2 * 0.9)
+        sample_rate, ANALYSIS_BANDS, ANALYSIS_LOW_HZ,
+        min(ANALYSIS_HIGH_HZ, sample_rate / 2 * 0.9),
     )
-    ea = extract_envelope(fb.apply(a[:n]), sample_rate, cutoff_hz=ANALYSIS_ENVELOPE_CUTOFF_HZ)
-    eb = extract_envelope(fb.apply(b[:n]), sample_rate, cutoff_hz=ANALYSIS_ENVELOPE_CUTOFF_HZ)
-    cors = [
-        np.corrcoef(x, y)[0, 1]
-        for x, y in zip(ea, eb, strict=True)
-        if x.std() > 1e-9 and y.std() > 1e-9
-    ]
-    return float(1.0 - np.mean(cors)) if cors else 1.0
+    ba, bb = fb.apply(a[:n]), fb.apply(b[:n])
+
+    scales = []
+    for cut in cutoffs:
+        if cut >= sample_rate / 2:
+            continue
+        ea = extract_envelope(ba, sample_rate, cutoff_hz=cut)
+        eb = extract_envelope(bb, sample_rate, cutoff_hz=cut)
+        cors = [
+            np.corrcoef(x, y)[0, 1]
+            for x, y in zip(ea, eb, strict=True)
+            if x.std() > 1e-9 and y.std() > 1e-9
+        ]
+        if cors:
+            scales.append(1.0 - float(np.mean(cors)))
+    return float(np.mean(scales)) if scales else 1.0
 
 
 def build_candidate_pool(

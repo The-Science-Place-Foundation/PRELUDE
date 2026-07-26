@@ -50,6 +50,17 @@ SR = 20000
 def candidate_configs() -> list[tuple[str, SimulatorConfig]]:
     """A spread of plausible devices, chosen to be audibly distinct.
 
+    **A broad sweep is the wrong shape once an anchor is known.** An
+    information-maximising sampler asks whichever comparison best separates its
+    hypotheses, not whichever sounds best - so over a pool that spans the whole
+    space, most trials compare two configurations that are both wrong. A
+    listener experiences that as the simulations getting steadily worse, which
+    is exactly what was reported after the first real session.
+
+    Once a configuration is known to be close, the pool should cluster around
+    it: fine variation near the anchor, with a few distant options retained so
+    the fit can still be pulled away if the anchor is wrong.
+
     Spread matters more than realism at this stage. If two candidates differ
     only in a way the listener cannot hear, the trial comparing them costs a
     minute and returns nothing. These vary the parameters that dominate the
@@ -59,48 +70,36 @@ def candidate_configs() -> list[tuple[str, SimulatorConfig]]:
     Defaults elsewhere follow a Cochlear Nucleus platform: 22 electrodes,
     ACE-style peak picking, 900 pps.
     """
-    base = dict(low_freq=300.0, high_freq=8500.0, stimulation_rate_hz=900.0, seed=0)
+    base = dict(low_freq=300.0, high_freq=8500.0, seed=0)
     out: list[tuple[str, SimulatorConfig]] = []
 
-    # Channel count: the single strongest determinant of fidelity.
-    for n in (4, 8, 12, 16, 22):
-        out.append((f"ch{n:02d}", SimulatorConfig(
-            n_channels=n, n_selected=n, carrier="noise",
-            envelope_cutoff_hz=300.0, interaction_decay_db=8.0, **base)))
+    # ANCHOR: a Cochlear Nucleus platform running ACE - 22 electrodes, 8
+    # maxima, 900 pps. The listener independently picked this configuration as
+    # the most accurate of everything played, without knowing what any of them
+    # were, which is the strongest signal available so far.
+    anchor = dict(n_channels=22, n_selected=8, carrier="noise",
+                  envelope_cutoff_hz=300.0, interaction_decay_db=8.0,
+                  stimulation_rate_hz=900.0, **base)
+    out.append(("anchor", SimulatorConfig(**anchor)))
 
-    # n-of-m depth on a 22-electrode array.
-    for n_sel in (4, 8, 12):
-        out.append((f"ace{n_sel:02d}of22", SimulatorConfig(
-            n_channels=22, n_selected=n_sel, carrier="noise",
-            envelope_cutoff_hz=300.0, interaction_decay_db=8.0, **base)))
+    # Fine variation around the anchor: one parameter moved at a time, so a
+    # preference points at a parameter rather than at an unattributable blend.
+    for n_sel in (6, 10, 12):
+        out.append((f"maxima{n_sel}", SimulatorConfig(**{**anchor, "n_selected": n_sel})))
+    for rate in (500.0, 1800.0):
+        out.append((f"rate{int(rate)}", SimulatorConfig(**{**anchor, "stimulation_rate_hz": rate})))
+    for db in (4.0, 16.0):
+        out.append((f"spread{int(db)}", SimulatorConfig(**{**anchor, "interaction_decay_db": db})))
+    for cut in (80.0, 900.0):
+        out.append((f"env{int(cut)}", SimulatorConfig(**{**anchor, "envelope_cutoff_hz": cut})))
+    for carrier in ("pulse", "tone"):
+        out.append((f"carrier_{carrier}", SimulatorConfig(**{**anchor, "carrier": carrier})))
 
-    # Current spread. Pushed to extremes deliberately: measured on channel
-    # envelopes, 3 vs 13 dB/channel differ by less than 0.1 - far below what a
-    # listener could report - so intermediate values only waste trials.
-    for db, tag in ((1.5, "smeared"), (30.0, "focused")):
-        out.append((f"spread_{tag}", SimulatorConfig(
-            n_channels=22, n_selected=8, carrier="noise",
-            envelope_cutoff_hz=300.0, interaction_decay_db=db, **base)))
-
-    # Envelope bandwidth. Same reasoning: 300 vs 600 Hz is not separable in
-    # this domain, so the pool spans a range that is.
-    for cut, tag in ((25.0, "slow"), (1500.0, "fast")):
-        out.append((f"env_{tag}", SimulatorConfig(
-            n_channels=22, n_selected=8, carrier="noise",
-            envelope_cutoff_hz=cut, interaction_decay_db=8.0, **base)))
-
-    # Pulsatile carrier at two synchronisation levels. Included because the
-    # carrier changes the character of the percept more than any single
-    # parameter, and which one a listener recognises is an open question.
-    for sync, tag in ((1.0, "tight"), (0.5, "loose")):
-        out.append((f"pulse_{tag}", SimulatorConfig(
-            n_channels=22, n_selected=8, carrier="pulse", synchronization=sync,
-            envelope_cutoff_hz=300.0, interaction_decay_db=8.0, **base)))
-
-    # Tone carrier: cleaner and more musical than noise.
-    out.append(("tone22", SimulatorConfig(
-        n_channels=22, n_selected=8, carrier="tone",
-        envelope_cutoff_hz=300.0, interaction_decay_db=8.0, **base)))
+    # A few distant options kept deliberately, so the fit can still be pulled
+    # away if the anchor turns out to be wrong. Without these the pool could
+    # only ever confirm its own starting point.
+    for n in (6, 12, 16):
+        out.append((f"ch{n:02d}", SimulatorConfig(**{**anchor, "n_channels": n, "n_selected": n})))
 
     return out
 
@@ -115,10 +114,10 @@ def main() -> int:
                     help="clip length; short keeps each trial brief")
     ap.add_argument("--balance-db", type=float, default=0.0,
                     help="implant-ear level offset from calibration")
-    ap.add_argument("--min-distance", type=float, default=0.08,
+    ap.add_argument("--min-distance", type=float, default=0.02,
                     help="drop candidates closer than this to one already kept. "
-                         "A trial between two indistinguishable candidates costs "
-                         "a minute of scarce listening time and returns nothing.")
+                         "Deliberately low: it should catch near-duplicates, not "
+                         "decide which parameters matter. See the note below.")
     args = ap.parse_args()
 
     out = args.output
@@ -160,10 +159,20 @@ def main() -> int:
         d = float(envelope_distance(audio[i], audio[j], SR))
         dist[i][j] = dist[j][i] = d
 
-    # Greedily keep candidates that are audibly distinct from everything kept
-    # so far. Curating this by hand does not scale and gets it wrong: several
-    # parameters that look independent on paper turn out to be inseparable in
-    # the envelope domain, which is the domain the listener judges in.
+    # Greedily drop near-duplicates only.
+    #
+    # The threshold is deliberately low. An earlier run pruned at 0.08 and
+    # discarded stimulation rate, interaction decay and envelope bandwidth as
+    # "indistinguishable" - but the measure could not resolve those parameters
+    # in the first place, so the result said nothing about whether a listener
+    # could hear them. A distance below threshold means the metric cannot
+    # separate two candidates; it does not mean a person cannot. Deciding on
+    # the listener's behalf, using an instrument known to be blind in that
+    # range, removes exactly the comparisons that would have settled the
+    # question.
+    #
+    # Pruning is for genuine duplicates. Which parameters matter is for the
+    # listener to answer.
     keep: list[int] = []
     for i in range(n):
         if all(dist[i][j] >= args.min_distance for j in keep):

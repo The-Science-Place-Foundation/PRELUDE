@@ -30,7 +30,7 @@ const IMPLANT_EAR = 'right';
 const S = {
   sessionId: null, trial: null, maxTrials: 40,
   shownAt: 0, playing: false, buffers: new Map(), ctx: null,
-  answered: 0, sameCount: 0,
+  answered: 0, sameCount: 0, heard: false,
   balanceDb: 0, calibrated: false,
   bal: null,
 };
@@ -181,7 +181,7 @@ $('chanNo').addEventListener('click', () => {
 function startBalance() {
   audioCtx();
   S.bal = { offset: 0, step: 6, dir: 0, reversals: [], responses: [],
-            centred: [], n: 0 };
+            centred: [], probe: -1, n: 0 };
   show('balance');
   $('balFoot').textContent = 'Press listen when you are ready';
   $('balPlay').textContent = 'Listen';
@@ -215,7 +215,16 @@ function balanceRespond(kind) {
   let dir = 0;
   if (kind === 'left') { dir = +1; b.offset += b.step; }
   else if (kind === 'right') { dir = -1; b.offset -= b.step; }
-  else { b.centred.push(b.offset); b.step = Math.max(1, b.step / 2); }
+  else {
+    b.centred.push(b.offset);
+    // "Centred" alone proves nothing: the first calibration answered
+    // "middle" three times without the offset ever leaving zero, and
+    // returned 0 dB having never tested whether +6 or -6 also felt
+    // centred. Deliberately step away to find where it stops feeling
+    // centred - that edge is the measurement.
+    b.probe = -(b.probe || -1);
+    b.offset += b.probe * b.step;
+  }
 
   // A reversal means the balance point has been bracketed; narrow the step.
   if (dir && b.dir && dir !== b.dir) {
@@ -225,7 +234,10 @@ function balanceRespond(kind) {
   if (dir) b.dir = dir;
   b.offset = Math.max(-18, Math.min(18, b.offset));
 
-  if (b.reversals.length >= 4 || b.centred.length >= 3 || b.n >= 12) {
+  // Requires reversals - actual bracketing - or the trial ceiling. Counting
+  // "centred" answers as sufficient is what let the first calibration finish
+  // without measuring anything.
+  if (b.reversals.length >= 4 || b.n >= 12) {
     finishBalance(false);
     return;
   }
@@ -241,7 +253,9 @@ $('balStop').addEventListener('click', () => finishBalance(true));
 
 async function finishBalance(early) {
   const b = S.bal;
-  const pts = [...b.reversals, ...b.centred];
+  // Reversals are the measurement. Centred answers are included only when
+  // reversals exist to bracket them - otherwise they are one point repeated.
+  const pts = b.reversals.length ? [...b.reversals, ...b.centred] : [];
   const value = pts.length
     ? Math.round((pts.reduce((a, c) => a + c, 0) / pts.length) * 10) / 10
     : null;
@@ -290,6 +304,10 @@ async function playTrial() {
       cards[k].classList.remove('sounding');
       if (k === 0) await new Promise(r => setTimeout(r, 420));
     }
+    S.heard = true;
+    S.shownAt = performance.now();   // deliberation time, not screen time
+    $('cardA').disabled = $('cardB').disabled = false;
+    $('sameBtn').disabled = false;
     $('trialFoot').textContent = 'Choose whichever felt closer';
   } catch {
     $('troubleNote').textContent =
@@ -299,7 +317,6 @@ async function playTrial() {
     S.playing = false;
     $('listenBtn').disabled = false;
     $('listenBtn').textContent = 'Listen again';
-    $('cardA').disabled = $('cardB').disabled = false;
   }
 }
 
@@ -329,14 +346,21 @@ async function begin() {
 
 function enterTrial() {
   show('trial');
-  S.shownAt = performance.now();
+  S.shownAt = 0;                 // starts when the audio finishes, not now
+  S.heard = false;
   $('listenBtn').textContent = 'Listen';
-  $('trialFoot').textContent = ' ';
-  $('cardA').disabled = $('cardB').disabled = false;
+  $('trialFoot').textContent = 'Listen to both, then choose';
+  // Locked until both candidates have actually played. In the first real
+  // session two of six responses arrived in under two seconds - less time
+  // than a single stimulus takes - and those taps fed the posterior as
+  // though they were judgements. A choice made before hearing anything is
+  // not a weak data point, it is a wrong one.
+  $('cardA').disabled = $('cardB').disabled = true;
+  $('sameBtn').disabled = true;
 }
 
 async function respond(choice) {
-  if (S.playing || !S.trial) return;
+  if (S.playing || !S.trial || !S.heard) return;
   const ms = Math.round(performance.now() - S.shownAt);
   if (choice === 'same') S.sameCount++;
   S.answered++;
