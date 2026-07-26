@@ -64,6 +64,24 @@ def synth_source(seconds: float = 6.0, sample_rate: int = SR) -> np.ndarray:
     return out / (np.abs(out).max() + 1e-12) * 0.5
 
 
+def _channel_check(sample_rate: int) -> np.ndarray:
+    """Left-only, then right-only, then both with a different pitch per side.
+
+    Left channel is index 0 and right is index 1, matching
+    :meth:`prelude.study.dichotic.Ear.channel_index`.
+    """
+    def tone(freq: float, dur: float) -> np.ndarray:
+        t = np.arange(int(dur * sample_rate)) / sample_rate
+        fade = np.minimum(1.0, np.minimum(t * 20, (dur - t) * 20))
+        return 0.25 * np.sin(2 * np.pi * freq * t) * fade
+
+    gap = np.zeros(int(0.5 * sample_rate))
+    silent = np.zeros(int(1.5 * sample_rate))
+    left = np.concatenate([tone(440, 1.5), gap, silent, gap, tone(440, 1.5)])
+    right = np.concatenate([silent, gap, tone(880, 1.5), gap, tone(880, 1.5)])
+    return np.stack([left, right])
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--implant-ear", choices=["left", "right"], required=True,
@@ -89,6 +107,8 @@ def main() -> int:
         source_name = "synthetic melodic figure"
 
     manifest: dict = {
+        "how_to_use": "See docs/CALIBRATION-SESSION.md. Copy this whole folder "
+                      "to her phone and play the files from it.",
         "assignment": assignment.describe(),
         "implant_ear": assignment.implant_ear.value,
         "acoustic_ear": assignment.acoustic_ear.value,
@@ -97,6 +117,23 @@ def main() -> int:
         "part1_balance": [],
         "part2_modes": [],
     }
+
+    # -- Part 0: channel check ---------------------------------------------
+    # Verifies that whatever audio path is in use actually keeps the ears
+    # separate. Some streaming accessories downmix to mono, in which case both
+    # ears receive the same blend while everything still sounds plausible, and
+    # every dichotic comparison silently becomes meaningless. Thirty seconds
+    # here prevents a whole category of invisible failure.
+    print("Part 0 - channel check")
+    check = _channel_check(SR)
+    save_audio(out / "channel_check.wav", Audio(check, SR))
+    manifest["part0_channel_check"] = {
+        "file": "channel_check.wav",
+        "0.0-1.5s": f"{assignment.acoustic_ear.value} ear only (440 Hz)",
+        "2.0-3.5s": f"{assignment.implant_ear.value} ear only (880 Hz)",
+        "4.0-5.5s": "both ears, different pitch each side",
+    }
+    print("  channel_check.wav")
 
     # -- Part 1: balance ----------------------------------------------------
     # The same signal both ears, implant side offset by a known amount. The

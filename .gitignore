@@ -78,3 +78,9 @@ htmlcov/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Generated calibration/session audio. Regenerate with
+# scripts/make_calibration_session.py - the manifest records which ear holds
+# which device, which is participant information and stays local.
+calibration/
+sessions/
