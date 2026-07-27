@@ -383,3 +383,98 @@ class TestPulseCarrier:
     def test_config_rejects_bad_synchronization(self):
         with pytest.raises(ValueError, match=r"\[0, 1\]"):
             SimulatorConfig(synchronization=2.0)
+
+
+class TestElectrodeDeactivation:
+    """A dead contact is a place mismatch, not just one channel fewer.
+
+    A fitting program reallocates the frequency range across the surviving
+    electrodes, so the processor still analyses the full band. What it cannot
+    do is move the electrodes: the range that used to go to the dead contact is
+    now delivered by its neighbours, at *their* place in the cochlea. Modelling
+    deactivation as a lower channel count reproduces the lost resolution and
+    none of the displacement.
+    """
+
+    def test_electrode_one_is_the_highest_frequency_band(self):
+        """Cochlear numbers electrode 1 at the BASE.
+
+        Filterbanks are indexed low to high, so the two orderings are mirror
+        images. Reading one as the other is silent and total: it turns a dead
+        7 kHz contact into a dead 300 Hz one and the output still sounds like
+        a cochlear implant.
+        """
+        from prelude.ci_sim.pipeline import electrode_to_band_index
+        assert electrode_to_band_index(1, 22) == 21
+        assert electrode_to_band_index(22, 22) == 0
+        assert electrode_to_band_index(1, 22, "apical_first") == 0
+        assert electrode_to_band_index(22, 22, "apical_first") == 21
+
+    def test_a_dead_contact_displaces_the_frequency_place_map(self, speech_like):
+        """The carriers must not sit at the analysis band centres."""
+        from prelude.ci_sim.filterbank import design_filterbank
+        from prelude.ci_sim.pipeline import _surviving_band_indices
+        cfg = SimulatorConfig(n_channels=21, n_selected=8, n_electrodes=22,
+                              deactivated_electrodes=(2,), low_freq=300.0,
+                              high_freq=7500.0)
+        analysis = design_filterbank(sample_rate=16000, n_channels=21,
+                                     low_freq=300.0, high_freq=7500.0)
+        full = design_filterbank(sample_rate=16000, n_channels=22,
+                                 low_freq=300.0, high_freq=7500.0)
+        places = full.center_freqs[_surviving_band_indices(cfg)]
+        assert not np.allclose(analysis.center_freqs, places), (
+            "analysis and delivery must diverge, or no mismatch is modelled")
+        # The displacement is on the side the contact died, and is real but
+        # bounded - a couple of semitones, not an octave.
+        shift = 12 * np.log2(places / analysis.center_freqs)
+        assert 0.5 < np.abs(shift).max() < 6.0
+
+    def test_no_deactivation_leaves_delivery_at_the_analysis_bands(self, speech_like):
+        """The ordinary case must be untouched by this feature."""
+        from prelude.ci_sim.filterbank import design_filterbank
+        cfg = SimulatorConfig(n_channels=22, n_selected=8, high_freq=7500.0)
+        assert cfg.deactivated_electrodes == ()
+        fb = design_filterbank(sample_rate=16000, n_channels=22,
+                               low_freq=cfg.low_freq, high_freq=cfg.high_freq)
+        r = simulate(speech_like, 16000, cfg)
+        assert r.audio.shape == speech_like.shape
+        assert fb.n_channels == 22
+
+    def test_a_basal_and_an_apical_dead_contact_are_not_the_same_simulation(
+            self, speech_like):
+        """The distinction the numbering ambiguity turns on.
+
+        If these produced similar audio, resolving whether the dead contact is
+        electrode 2 or electrode 21 would not matter. They do not.
+        """
+        basal = simulate(speech_like, 16000, SimulatorConfig(
+            n_channels=21, n_selected=8, n_electrodes=22,
+            deactivated_electrodes=(2,), high_freq=7500.0, seed=0))
+        apical = simulate(speech_like, 16000, SimulatorConfig(
+            n_channels=21, n_selected=8, n_electrodes=22,
+            deactivated_electrodes=(21,), high_freq=7500.0, seed=0))
+        assert not np.allclose(basal.audio, apical.audio)
+
+    def test_config_hash_changes_with_the_dead_contact(self):
+        """Provenance: two runs differing only here must be distinguishable."""
+        a = SimulatorConfig(n_channels=21, n_electrodes=22,
+                            deactivated_electrodes=(2,))
+        b = SimulatorConfig(n_channels=21, n_electrodes=22,
+                            deactivated_electrodes=(21,))
+        assert a.hash() != b.hash()
+
+    def test_deactivation_without_an_array_size_is_refused(self):
+        with pytest.raises(ValueError, match="n_electrodes"):
+            SimulatorConfig(n_channels=21, deactivated_electrodes=(2,))
+
+    def test_channel_count_must_match_the_surviving_contacts(self):
+        """Guards the specific error this replaced: modelling 22 minus one
+        dead contact as an arbitrary smaller number of evenly spaced channels."""
+        with pytest.raises(ValueError, match="surviving"):
+            SimulatorConfig(n_channels=19, n_electrodes=22,
+                            deactivated_electrodes=(2,))
+
+    def test_electrode_numbers_are_one_based_like_a_clinic_printout(self):
+        with pytest.raises(ValueError, match="1-based"):
+            SimulatorConfig(n_channels=21, n_electrodes=22,
+                            deactivated_electrodes=(0,))
