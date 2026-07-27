@@ -42,7 +42,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from prelude.audio import Audio, load_audio, save_audio
+from prelude.audio import Audio, load_audio, prepare_for_playback, save_audio
 from prelude.ci_sim import SimulatorConfig, simulate
 from prelude.fitting import envelope_distance
 from prelude.study import Ear, EarAssignment, PresentationMode, build_dichotic
@@ -76,11 +76,21 @@ def candidate_configs() -> list[tuple[str, SimulatorConfig]]:
     base = dict(low_freq=300.0, high_freq=8500.0, seed=0)
     out: list[tuple[str, SimulatorConfig]] = []
 
-    # ANCHOR: a Cochlear Nucleus platform running ACE - 22 electrodes, 8
-    # maxima, 900 pps. The listener independently picked this configuration as
-    # the most accurate of everything played, without knowing what any of them
-    # were, which is the strongest signal available so far.
-    anchor = dict(n_channels=22, n_selected=8, carrier="noise",
+    # ANCHOR: the listener's actual implant. 21 intracochlear electrodes with
+    # 1-3 permanently lost to surgical repair, so roughly 19 remain usable.
+    # ACE peak picking, 900 pps.
+    #
+    # The archived 2004-era simulator sessions independently used n_chan_ci=21,
+    # which is corroboration rather than coincidence: that tuning was done with
+    # this listener. A 22-channel default was a platform assumption and is
+    # wrong for this device.
+    #
+    # NOTE: 19 usable of 21 is modelled here as 19 evenly spaced channels. A
+    # real deactivation leaves GAPS in the tonotopic map - the allocation is
+    # redistributed across survivors, but the electrode positions still have
+    # holes, so spacing is uneven. Modelling that needs per-electrode
+    # deactivation in SimulatorConfig, which does not exist yet.
+    anchor = dict(n_channels=19, n_selected=8, carrier="noise",
                   envelope_cutoff_hz=300.0, interaction_decay_db=8.0,
                   stimulation_rate_hz=900.0, **base)
     out.append(("anchor", SimulatorConfig(**anchor)))
@@ -103,6 +113,9 @@ def candidate_configs() -> list[tuple[str, SimulatorConfig]]:
     # only ever confirm its own starting point.
     for n in (6, 8, 12, 16):
         out.append((f"ch{n:02d}", SimulatorConfig(**{**anchor, "n_channels": n, "n_selected": n})))
+    # Bracket the uncertainty in how many electrodes actually survived.
+    for n in (18, 21):
+        out.append((f"active{n}", SimulatorConfig(**{**anchor, "n_channels": n})))
 
     # Retained because the listener has already been asked about them.
     # Dropping a configuration that appears in a recorded judgement orphans
@@ -136,18 +149,66 @@ def _archive_existing(out: Path) -> None:
     print(f"archived the previous pool to {dest}")
 
 
-def _config_id(cfg: SimulatorConfig) -> str:
-    """Short stable hash of the parameters that determine what is heard.
+def _find_prior_asset(out: Path, name: str) -> Path | None:
+    """Existing copy of a fixed-name asset the app depends on.
 
-    Two candidates with the same id are the same sound regardless of what
-    either pool called them, which is what lets a judgement recorded against
-    one pool be scored against another.
+    The live pool is checked first, and that is the actual guarantee: building
+    a new pool beside a live one is the normal case, and the live one is where
+    these assets are.
+
+    Archives are the fallback, ordered by modification time rather than name.
+    Name order does not work: most archives are stamped
+    ``<pool>-<UTC timestamp>``, but at least one is hand-named
+    (``pool-v1-as-she-heard-it``), and ``-`` sorts below ``_``, so a reverse
+    name sort puts every ``pool_new-*`` ahead of every ``pool-*`` whatever the
+    dates say.
+    """
+    roots = [out.parent / "pool"]
+    archive = out.parent / "archive"
+    if archive.is_dir():
+        roots.extend(sorted((d for d in archive.iterdir() if d.is_dir()),
+                            key=lambda d: d.stat().st_mtime, reverse=True))
+    for d in roots:
+        f = d / name
+        if d != out and f.is_file():
+            return f
+    return None
+
+
+def _config_id(cfg: SimulatorConfig) -> str:
+    """Short stable hash of the simulator parameters behind a candidate.
+
+    Two candidates with the same id came out of the same simulator settings
+    regardless of what either pool called them, which is what lets a
+    judgement recorded against one pool be related to another.
+
+    This deliberately covers the *simulation* only. It is not sufficient to
+    identify the audio - see :func:`_render_id`.
     """
     keys = ("n_channels", "n_selected", "carrier", "stimulation_rate_hz",
             "envelope_cutoff_hz", "interaction_decay_db", "synchronization",
             "low_freq", "high_freq", "spacing")
     g = vars(cfg)
     blob = json.dumps({k: g.get(k) for k in keys}, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()[:10]
+
+
+def _render_id(cfg: SimulatorConfig, presentation: dict) -> str:
+    """Hash of everything that determines the actual bytes of a stimulus.
+
+    The simulator config alone does not. The same simulation rendered at a
+    different ear balance, segment length, source clip or pool level is
+    different audio, and naming files by simulator config alone put two
+    genuinely different builds at identical filenames with identical ids -
+    while ``/audio/`` serves them ``immutable`` for a year.
+
+    Caught before either build was deployed, but only by measuring: a pool
+    rendered with the balance baked in and one without shared all twenty
+    filenames and the same pool id. Whatever changes the bytes has to change
+    the name.
+    """
+    blob = json.dumps({"config": _config_id(cfg), **presentation},
+                      sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()[:10]
 
 
@@ -161,6 +222,9 @@ def main() -> int:
                     help="clip length; short keeps each trial brief")
     ap.add_argument("--balance-db", type=float, default=0.0,
                     help="implant-ear level offset from calibration")
+    ap.add_argument("--control-db", type=float, default=3.0,
+                    help="level difference for the control pair. Defaults to the "
+                         "3 dB gap that confounded the first session.")
     ap.add_argument("--min-distance", type=float, default=0.02,
                     help="drop candidates closer than this to one already kept. "
                          "Deliberately low: it should catch near-duplicates, not "
@@ -178,24 +242,68 @@ def main() -> int:
     configs = candidate_configs()
     print(f"rendering {len(configs)} candidates from {args.source.name}")
 
+    # Render everything first, then find a level that ALL candidates can reach
+    # without the peak limiter engaging.
+    #
+    # Normalising each file independently makes high-crest candidates quieter
+    # than the rest: the limiter pulls them down and nothing notices. In the
+    # first real session the pulse-carrier candidate sat 3.09 dB below the
+    # other sixteen, which spanned 0.20 dB between them - and the listener
+    # chose it in six of six trials. "Preferred the pulse carrier" and
+    # "preferred the quieter interval" then predict identical data, and the
+    # session cannot separate them. Three dB is around three times a level
+    # just-noticeable-difference.
+    sims = [simulate(src, SR, cfg).audio for _, cfg in configs]
+    achievable = []
+    for sim in sims:
+        _, rep = prepare_for_playback(sim, SR)
+        achievable.append(rep.output_lufs)
+    common = min(achievable)
+    print(f"levelling the pool to {common:.2f} LUFS "
+          f"(worst case of {len(sims)}; spread was {max(achievable) - common:.2f} dB)")
+
+    # Everything outside the simulator config that changes the rendered bytes.
+    # Part of the filename and of the pool id, so a rebuild under different
+    # presentation cannot reuse either.
+    presentation = {
+        "source": args.source.name,
+        "seconds": args.seconds,
+        "sample_rate": SR,
+        "implant_ear": assignment.implant_ear.value,
+        "balance_db": args.balance_db,
+        "mode": PresentationMode.ALTERNATING.value,
+        "segment_ms": 500,
+        "common_lufs": round(common, 3),
+    }
+
     entries, audio = [], []
     for i, (name, cfg) in enumerate(configs):
-        sim = simulate(src, SR, cfg).audio
+        sim = sims[i]
         audio.append(sim)
         d = build_dichotic(
             src, sim, SR, assignment,
             mode=PresentationMode.ALTERNATING, segment_ms=500,
-            implant_target_lufs=-23.0 + args.balance_db,
-            acoustic_target_lufs=-23.0,
+            implant_target_lufs=common + args.balance_db,
+            acoustic_target_lufs=common,
         )
-        fname = f"cand_{name}.wav"
+        # The filename carries the config hash. Two pools each had a
+        # ``cand_anchor.wav`` holding different audio, and /audio/ is served
+        # ``immutable`` with a year-long max-age - a phone with a warm cache
+        # would have played the old sound and had the choice scored as the
+        # new one. A name that changes whenever the audio changes makes that
+        # failure impossible rather than merely unlikely.
+        cid = _config_id(cfg)
+        rid = _render_id(cfg, presentation)
+        fname = f"cand_{name}-{rid}.wav"
         save_audio(out / fname, Audio(d.samples, SR))
         entries.append({
             "index": i, "name": name, "file": fname,
             # Identity follows the configuration, not the label. Names are for
             # humans and get edited; a recorded judgement has to stay
             # resolvable when they do.
-            "config_id": _config_id(cfg),
+            "config_id": cid,
+            # Identity of the audio itself, presentation included.
+            "render_id": rid,
             "config": {k: v for k, v in vars(cfg).items()},
             "duration_s": round(d.duration_s, 2),
         })
@@ -242,17 +350,90 @@ def main() -> int:
         dist = [[dist[i][j] for j in keep] for i in keep]
         n = len(keep)
 
+    # ---- level control pair -------------------------------------------
+    # The anchor against an attenuated copy of ITSELF. Identical content;
+    # level is the only difference. If the listener reliably picks the quieter
+    # one, then a preference correlated with level explains itself and no
+    # carrier claim survives.
+    #
+    # This is the cheapest measurement that decides the question, and it does
+    # not depend on the levelling above being correct - which is exactly why
+    # it is worth having.
+    # ``sims`` is the unpruned list and ``entries`` is the pruned one, so an
+    # index into one is not an index into the other. Look the anchor up by
+    # name in both. This was benign only while the anchor sat at index 0 and
+    # index 0 was always kept; it would have silently rendered the control
+    # from the wrong candidate the moment either stopped being true.
+    sim_by_name = {name: sims[i] for i, (name, _) in enumerate(configs)}
+    ctrl = build_dichotic(
+        src, sim_by_name["anchor"], SR, assignment,
+        mode=PresentationMode.ALTERNATING, segment_ms=500,
+        implant_target_lufs=common + args.balance_db,
+        acoustic_target_lufs=common,
+    )
+    ctrl_id = _render_id(dict(configs)["anchor"], presentation)
+    ref_name = f"control_level_ref-{ctrl_id}.wav"
+    quiet_name = f"control_level_quiet-{ctrl_id}.wav"
+    save_audio(out / ref_name, Audio(ctrl.samples, SR))
+    quiet = ctrl.samples * (10.0 ** (-args.control_db / 20.0))
+    save_audio(out / quiet_name, Audio(quiet, SR))
+    print(f"level control pair written: identical content, "
+          f"{args.control_db:.0f} dB apart")
+
+    # ---- assets the app fetches by fixed name --------------------------
+    # The calibration stimuli are built by make_calibration_session.py and
+    # live alongside the pool because the app serves everything from one
+    # directory. A pool without them silently breaks the channel check and
+    # the balance staircase - the balance measurement this pool's own levels
+    # are built on. Carry them forward from the pool being replaced.
+    for asset in ("channel_check.wav", "balance_source.wav"):
+        if (out / asset).is_file():
+            continue
+        prior = _find_prior_asset(out, asset)
+        if prior is None:
+            print(f"  WARNING: {asset} is missing and no previous pool has it.")
+            print("           The app fetches it by name; calibration will fail.")
+            print("           Run scripts/make_calibration_session.py.")
+            continue
+        shutil.copy2(prior, out / asset)
+        print(f"  carried forward {asset} from {prior.parent.name}")
+
     flat = [dist[i][j] for i, j in itertools.combinations(range(n), 2)]
-    (out / "pool.json").write_text(json.dumps({
+    pool_body = {
+        # Presented before the candidate trials. Identical audio at two levels,
+        # so any consistent preference measures sensitivity to level rather
+        # than to anything the simulator varies.
+        "control_pair": {
+            "files": [ref_name, quiet_name],
+            "difference_db": args.control_db,
+            "duration_s": round(ctrl.duration_s, 2),
+            "purpose": "does a level difference alone drive the choice?",
+        },
         "source": args.source.name,
         "sample_rate": SR,
         "implant_ear": assignment.implant_ear.value,
         "balance_db": args.balance_db,
         "candidates": entries,
         "distances": dist,
-    }, indent=2, default=str))
+    }
 
-    print(f"\nwrote {out}/pool.json")
+    # ---- pool identity -------------------------------------------------
+    # A session record stores bare integers. Those integers only mean
+    # something relative to the pool that was mounted when they were
+    # recorded, and rebuilding the pool reorders them: changing the anchor
+    # from 22 to 19 channels moved candidate 9 from the pulse carrier to a
+    # candidate that had not existed, so re-scoring an existing session would
+    # have quietly reattributed six of seven judgements to the wrong sound.
+    #
+    # The id covers what a judgement depends on - which sounds, in which
+    # order - so any pool that would reinterpret an index gets a different
+    # one and the server can refuse the mismatch instead of scoring it.
+    identity = json.dumps(
+        [[e["name"], e["render_id"]] for e in entries], sort_keys=True)
+    pool_body["pool_id"] = hashlib.sha256(identity.encode()).hexdigest()[:12]
+    (out / "pool.json").write_text(json.dumps(pool_body, indent=2, default=str))
+
+    print(f"\nwrote {out}/pool.json  (pool_id {pool_body['pool_id']})")
     print(f"  distance spread: min {min(flat):.3f}  median "
           f"{sorted(flat)[len(flat) // 2]:.3f}  max {max(flat):.3f}")
     if min(flat) > 0.05:

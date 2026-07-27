@@ -130,26 +130,50 @@ class TestHonestUncertainty:
         assert "Fewer than 15 judgements" in text
 
 
-class TestBetaCalibration:
-    def test_position_bias_lowers_beta(self):
-        pool, _ = synthetic_pool()
-        fitter = SimulatorFitter(pool)
-        before = fitter.beta
-        fitter.set_beta_from_catch_rate(catch_bias=1.0, n_catch=10)
-        assert fitter.beta < before
+class TestBetaIsAssumedNotMeasured:
+    """Encodes a removed feature, because the reasoning behind it was appealing.
 
-    def test_chance_catch_performance_keeps_beta_high(self):
-        pool, _ = synthetic_pool()
-        fitter = SimulatorFitter(pool)
-        fitter.set_beta_from_catch_rate(catch_bias=0.5, n_catch=10)
-        assert fitter.beta == pytest.approx(6.0, rel=0.05)
+    ``set_beta_from_catch_rate`` estimated discrimination sharpness from
+    catch-trial performance. Catch trials present identical stimuli, so the
+    distance is zero under every hypothesis and a response cannot depend on
+    discrimination at all - they measure position bias, a different quantity.
+    A listener who coin-flipped every trial scored a textbook 50/50 and was
+    awarded the highest sharpness the model can express.
 
-    def test_too_few_catch_trials_leaves_beta_alone(self):
+    If someone reintroduces it, these tests should fail.
+    """
+
+    def test_calibrating_beta_from_catch_trials_is_refused(self):
         pool, _ = synthetic_pool()
         fitter = SimulatorFitter(pool)
-        before = fitter.beta
-        fitter.set_beta_from_catch_rate(catch_bias=1.0, n_catch=2)
-        assert fitter.beta == before
+        with pytest.raises(NotImplementedError):
+            fitter.set_beta_from_catch_rate(catch_bias=1.0, n_catch=10)
+
+    def test_posterior_is_reported_across_a_beta_range(self):
+        """Confidence must be reportable as a spread, not a point estimate."""
+        pool, _ = synthetic_pool()
+        fitter = SimulatorFitter(pool)
+        fitter.observe(Judgement(chosen=1, rejected=2))
+        fitter.observe(Judgement(chosen=1, rejected=3))
+        spread = fitter.posterior_over_beta((1.5, 3.0, 6.0))
+        assert set(spread) == {1.5, 3.0, 6.0}
+        for p in spread.values():
+            assert p.shape == (len(pool),)
+            assert p.sum() == pytest.approx(1.0)
+
+    def test_higher_beta_concentrates_the_posterior(self):
+        """The sensitivity that makes an assumed beta worth reporting openly.
+
+        The same judgements give a sharper posterior at beta 6 than at 1.5.
+        That gap is the assumption's contribution, and burying it inside one
+        number is what made the removed estimator dangerous.
+        """
+        pool, _ = synthetic_pool()
+        fitter = SimulatorFitter(pool)
+        for r in (2, 3, 4):
+            fitter.observe(Judgement(chosen=1, rejected=r))
+        spread = fitter.posterior_over_beta((1.5, 6.0))
+        assert spread[6.0].max() > spread[1.5].max()
 
 
 class TestTrialSelection:

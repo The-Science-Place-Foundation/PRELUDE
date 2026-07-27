@@ -89,21 +89,62 @@ class SimulatorFitter:
         return p / p.sum()
 
     def set_beta_from_catch_rate(self, catch_bias: float, n_catch: int) -> None:
-        """Calibrate discrimination sharpness from catch-trial performance.
+        """Removed: catch trials cannot estimate discrimination sharpness.
 
-        Catch trials present identical stimuli, so responses should be at chance.
-        A listener who answers them near 50/50 is discriminating rather than
-        guessing on the real trials, which supports a higher ``beta``. A strong
-        position bias means their choices carry less information and ``beta``
-        should fall, so that the fit does not over-trust them.
+        This calibrated ``beta`` from catch-trial performance. It was wrong in
+        a way worth recording, because the reasoning is appealing.
 
-        Fitting with an uncalibrated ``beta`` is the main way this procedure can
-        produce confident nonsense: too high, and noise is read as signal.
+        Catch trials present *identical* stimuli. The distance between them is
+        zero whichever candidate is hypothesised, so a catch response cannot
+        depend on how sharply the listener discriminates. What they measure is
+        *response bias* - whether one interval gets picked regardless of
+        content - which is a different quantity. The consequence is backwards:
+        a listener who discriminates nothing and coin-flips every trial
+        produces textbook 50/50 catch performance and was awarded ``beta``
+        6.0, the highest trust the model can express.
+
+        The sample size made it worse. With ``n_catch=4`` from a listener
+        answering at chance, this returned beta 6.0, 3.0 or 0.9 with
+        probability 0.375, 0.5 and 0.125 - and on the seven judgements from
+        the first real session the resulting posterior reports roughly 83%,
+        52% and 15% confidence respectively. That is a lottery over four coin
+        flips presented as a measurement, which is worse than an honest
+        assumption because it is harder to discount.
+
+        Instead: use :meth:`posterior_over_beta` to report the spread over a
+        plausible range, and treat catch trials as the position-bias
+        diagnostic they are. If position bias needs correcting, the model for
+        it is an additive position term in the choice rule - directional
+        evidence about a slot - not a global reduction in sharpness, which
+        only shrinks the posterior toward uniform.
         """
-        if n_catch < 4:
-            return  # too few to estimate anything
-        bias = abs(catch_bias - 0.5) * 2.0  # 0 = at chance, 1 = fully biased
-        self.beta = DEFAULT_BETA * max(0.15, 1.0 - bias)
+        raise NotImplementedError(self.set_beta_from_catch_rate.__doc__)
+
+    def posterior_over_beta(
+        self, betas: tuple[float, ...] = (1.5, 3.0, 6.0)
+    ) -> dict[float, np.ndarray]:
+        """The posterior recomputed at several assumed sharpness values.
+
+        ``beta`` is assumed rather than measured, and the posterior is highly
+        sensitive to it. Reporting the spread lets a reader see how much of a
+        confidence figure is evidence and how much is the assumption; a result
+        that only appears at the optimistic end is an assumption wearing a
+        number.
+        """
+        out: dict[float, np.ndarray] = {}
+        for b in betas:
+            lp = np.full(len(self.pool), -math.log(len(self.pool)))
+            for j in self.judgements:
+                margin = b * (self.pool.distances[j.rejected]
+                              - self.pool.distances[j.chosen])
+                ll = -np.logaddexp(0.0, -margin)
+                if j.confidence is not None:
+                    ll = ll * (0.4 + 0.15 * j.confidence)
+                lp = lp + ll
+                lp -= lp.max()
+            p = np.exp(lp - lp.max())
+            out[b] = p / p.sum()
+        return out
 
     def _choice_loglik(self, chosen: int, rejected: int) -> np.ndarray:
         """Log P(chosen preferred over rejected | each candidate is the truth)."""

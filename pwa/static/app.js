@@ -15,6 +15,12 @@
       and it means one measured calibration governs every later stimulus
       without re-rendering anything.
 
+      Only the RESIDUAL is applied: a pool can be rendered with part of the
+      offset already baked in, and the server reports how much via
+      pool_balance_db. Applying the full measured value on top of a pool
+      rendered at +6 dB would have put the ears 12 dB apart against a balance
+      measured at 6.
+
    Stereo is preserved end to end: the file's left channel reaches the left
    device and the right reaches the right. Nothing mixes to mono, because the
    whole comparison depends on the ears staying separate. */
@@ -31,7 +37,7 @@ const S = {
   sessionId: null, trial: null, maxTrials: 40,
   shownAt: 0, playing: false, buffers: new Map(), ctx: null,
   answered: 0, sameCount: 0, heard: false,
-  balanceDb: 0, calibrated: false,
+  balanceDb: 0, residualDb: 0, calibrated: false,
   bal: null,
 };
 
@@ -266,7 +272,7 @@ async function finishBalance(early) {
     ? Math.round((pts.reduce((a, c) => a + c, 0) / pts.length) * 10) / 10
     : null;
 
-  if (value !== null) S.balanceDb = value;
+  if (value !== null) { S.balanceDb = value; S.residualDb = value - (S.poolBalanceDb || 0); }
   try {
     await api('/api/calibration', {
       balance_db: value, channels_separate: true,
@@ -304,7 +310,7 @@ async function playTrial() {
     for (let k = 0; k < 2; k++) {
       cards[k].classList.add('sounding');
       const sweep = earSweep(IMPLANT_EAR === 'right');
-      await playBuffer(bufs[k], S.balanceDb);
+      await playBuffer(bufs[k], S.residualDb);
       clearInterval(sweep);
       earsOff('dotL', 'dotR');
       cards[k].classList.remove('sounding');
@@ -429,8 +435,17 @@ $('retryBtn').addEventListener('click', () => location.reload());
   try {
     const [h, c] = await Promise.all([api('/health'), api('/api/calibration')]);
     const cal = c.calibration;
+    /* How much of the balance the stimuli already carry. Stored before any
+       residual is derived, because finishBalance() recomputes the residual
+       after a fresh measurement and would otherwise subtract undefined and
+       reapply the whole offset on top of a pool that already has it. */
+    S.poolBalanceDb = c.pool_balance_db || 0;
     if (cal && typeof cal.balance_db === 'number') {
       S.balanceDb = cal.balance_db;
+      /* Apply only the part the stimuli do not already carry. Applying the
+         measured value on top of a pool rendered at +6 dB would put the ears
+         12 dB apart against a balance measured at 6. */
+      S.residualDb = S.balanceDb - S.poolBalanceDb;
       S.calibrated = true;
     }
     const sessions = h.sessions_on_disk;

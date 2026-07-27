@@ -91,7 +91,14 @@ calibration_speech/
 
 # PWA runtime data - stimuli and session records live on the server
 pwa/data/
+# Candidate pools, live and staged. Generated artefacts, and large. The
+# pool.json alone would be tempting to keep, but a pool.json without the audio
+# it indexes is a manifest for files nobody has - and pool identity now lives
+# in the record, so it does not need to live in git.
 pool/
+pool_new/
+pool-*/
+pool_*/
 
 # Generated pools and their archives. Never deleted - a pool is the reference
 # every recorded judgement points at, so discarding one discards the meaning
