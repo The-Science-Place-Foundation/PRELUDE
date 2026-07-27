@@ -159,7 +159,7 @@ def _find_prior_asset(out: Path, name: str) -> Path | None:
     Archives are the fallback, ordered by modification time rather than name.
     Name order does not work: most archives are stamped
     ``<pool>-<UTC timestamp>``, but at least one is hand-named
-    (``pool-v1-as-she-heard-it``), and ``-`` sorts below ``_``, so a reverse
+    (``pool-v1-misattributed``), and ``-`` sorts below ``_``, so a reverse
     name sort puts every ``pool_new-*`` ahead of every ``pool-*`` whatever the
     dates say.
     """

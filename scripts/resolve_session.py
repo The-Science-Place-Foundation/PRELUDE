@@ -25,7 +25,7 @@ Both sessions recorded before pool identity existed resolve completely this
 way, and the mapping is self-consistent in each - no index is ever served
 under two different filenames.
 
-Worth knowing why this matters here: ``archive/pool-v1-as-she-heard-it`` was
+Worth knowing why this matters here: ``archive/pool-v1-misattributed`` was
 reconstructed from git history and named as though it were the pool behind the
 early sessions. It is not. It holds the right *set* of stimuli but in a
 different order, so resolving indices through it silently renames several

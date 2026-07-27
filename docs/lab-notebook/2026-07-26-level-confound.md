@@ -81,7 +81,7 @@ existed when the listener sat down. Session records store bare integers, so
 rescoring against the new pool would have silently reattributed six of seven
 judgements — reporting "chose `env900` 6/6" with no error raised.
 
-`archive/pool-v1-as-she-heard-it/` is **misnamed**: it holds the right set of
+`archive/pool-v1-misattributed/` is **misnamed**: it holds the right set of
 stimuli in a different order and cannot be the referent for either session.
 See the README in that directory.
 

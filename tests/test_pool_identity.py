@@ -134,14 +134,14 @@ class TestAssetCarryForward:
         """Name order is wrong, and the hand-named archive here proves it.
 
         Most archives are stamped ``<pool>-<UTC timestamp>``, but
-        ``pool-v1-as-she-heard-it`` is hand-named, and ``-`` sorts below
+        ``pool-v1-misattributed`` is hand-named, and ``-`` sorts below
         ``_`` - so a reverse name sort puts every ``pool_new-*`` ahead of
         every ``pool-*`` regardless of date. The newest here is deliberately
         the one that loses on name order.
         """
         import os
         older = tmp_path / "archive" / "pool_new-20260201-000000"
-        newer = tmp_path / "archive" / "pool-v1-as-she-heard-it"
+        newer = tmp_path / "archive" / "pool-v1-misattributed"
         for d, body in ((older, b"older"), (newer, b"newer")):
             d.mkdir(parents=True)
             (d / "channel_check.wav").write_bytes(body)

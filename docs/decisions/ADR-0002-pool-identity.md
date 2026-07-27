@@ -27,7 +27,7 @@ contained a `cand_anchor.wav`. A phone with a warm cache would have played the
 old audio and had the choice scored against the new pool.
 
 Neither of these is hypothetical. Both were live in the tree at the same time,
-and an archive directory named `pool-v1-as-she-heard-it` turned out not to be
+and an archive directory named `pool-v1-misattributed` turned out not to be
 the pool behind either recorded session — it holds the right stimuli in the
 wrong order.
 
@@ -98,7 +98,7 @@ against is precisely one that produces plausible output.
   audio.
 - Archives are never pruned, and a pool whose provenance is doubtful is
   annotated rather than deleted or renamed — see
-  `archive/pool-v1-as-she-heard-it/MISNAMED-README.md`.
+  `archive/pool-v1-misattributed/MISNAMED-README.md`.
 
 ## The general rule
 
