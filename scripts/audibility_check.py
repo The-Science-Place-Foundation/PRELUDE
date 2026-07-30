@@ -17,8 +17,8 @@ indistinguishable from "the simulator cannot tell them apart".
 That is not hypothetical here. Simulation against the previous pool showed
 several candidates were unrecoverable, and the open question was whether the
 distance metric was too blunt or the parameters genuinely did not matter. This
-adds a third possibility that has to be excluded first: **she may not be able
-to hear the region where they differ.**
+adds a third possibility that has to be excluded first: **the listener may not
+be able to hear the region where they differ.**
 
 What this can and cannot tell you
 ---------------------------------
@@ -28,9 +28,9 @@ severe loss, and what share of each candidate pair's difference lives there.
 It CANNOT tell you absolute audibility. That needs the presentation level in
 dB SPL at the eardrum, which depends on device volume, the streaming path and
 the hearing aid's own gain - none of which are known. Treat "inaudible" here
-as "at risk", not as measured fact. The honest test is behavioural: if she
-cannot discriminate a pair whose difference lives entirely in a dead region,
-that is consistent; if she *can*, the audiogram is not the explanation.
+as "at risk", not as measured fact. The honest test is behavioural: failing to
+discriminate a pair whose difference lives entirely in a dead region is
+consistent with this; discriminating it rules the explanation out.
 
 Usage
 -----
