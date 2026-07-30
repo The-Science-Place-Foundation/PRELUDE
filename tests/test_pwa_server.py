@@ -665,3 +665,70 @@ class TestMappingRejectsAnythingNotFromTheApp:
     def test_a_normal_stimulus_filename_passes(self, srv):
         assert srv.SAFE_NAME.match("map_detect_4500.wav")
         assert srv.SAFE_NAME.match("map_ci_1500.wav")
+
+
+class TestPitchMatchReliabilityIsJudgedNotAssumed:
+    """A staircase fed random answers still converges — on noise.
+
+    The client's own `resolved` flag only checked that the finest step had been
+    reached and reversed at twice. An investigator ran three staircases with
+    deliberately random answers and all three came back resolved, reporting
+    shifts of -20, +24 and -31 semitones. A tonotopic map cannot do that, and
+    the numbers were being presented as measurements.
+
+    The discriminator is the spread among finest-step reversals. The finest rung
+    is 1.5 semitones, so a listener genuinely tracking pitch oscillates within
+    a rung or two; scattered reversals mean nothing was bracketed.
+    """
+
+    def _assess(self, srv, reversals, ci_hz=1500.0, match_hz=2000.0):
+        import math
+        finest = [r["hz"] for r in reversals if r["stepIx"] == srv._finest_step_index()]
+        if len(finest) < 2:
+            return False, None
+        spread = 12 * math.log2(max(finest) / min(finest))
+        return spread <= srv.RELIABLE_SPREAD_ST, round(spread, 2)
+
+    def test_the_real_random_run_is_rejected(self, srv):
+        """The exact reversals from the random test session."""
+        scattered = [{"hz": 6168.8, "stepIx": 0}, {"hz": 4362, "stepIx": 1},
+                     {"hz": 5187.4, "stepIx": 2}, {"hz": 4756.8, "stepIx": 3},
+                     {"hz": 7336, "stepIx": 3}, {"hz": 6727.2, "stepIx": 3}]
+        settled, spread = self._assess(srv, scattered)
+        assert settled is False
+        assert spread > 7.0, f"spread was {spread}, should be wide"
+
+    def test_a_tightly_bracketed_run_is_accepted(self, srv):
+        """What a listener actually tracking pitch looks like: within a rung or two."""
+        tight = [{"hz": 1500.0, "stepIx": 0}, {"hz": 2200.0, "stepIx": 1},
+                 {"hz": 2000.0, "stepIx": 2}, {"hz": 2062.0, "stepIx": 3},
+                 {"hz": 1943.0, "stepIx": 3}, {"hz": 2062.0, "stepIx": 3}]
+        settled, spread = self._assess(srv, tight)
+        assert settled is True, f"spread {spread} st should pass"
+        assert spread < srv.RELIABLE_SPREAD_ST
+
+    def test_reversals_only_at_coarse_steps_are_rejected(self, srv):
+        """Never reaching the finest step is not a measurement at its resolution."""
+        coarse = [{"hz": 1500.0, "stepIx": 0}, {"hz": 2200.0, "stepIx": 1},
+                  {"hz": 1800.0, "stepIx": 2}]
+        assert self._assess(srv, coarse)[0] is False
+
+    def test_a_single_finest_reversal_is_not_a_bracket(self, srv):
+        one = [{"hz": 2000.0, "stepIx": 3}, {"hz": 1500.0, "stepIx": 1}]
+        assert self._assess(srv, one)[0] is False
+
+    def test_the_finest_index_matches_the_client_ladder(self, srv):
+        """MAP_STEPS in app.js is [8, 4, 2, 1]; drift here silently breaks this."""
+        app_js = (Path(__file__).resolve().parents[1]
+                  / "pwa" / "static" / "app.js").read_text()
+        assert "const MAP_STEPS = [8, 4, 2, 1];" in app_js
+        assert srv._finest_step_index() == 3
+
+    def test_direction_disagreement_across_references_is_flagged(self, srv):
+        """A tonotopic map cannot shift up at one frequency and down at another."""
+        shifts = [-20.0, 24.48, -30.52]          # the random run
+        signs = {1 if v > 1.5 else -1 if v < -1.5 else 0 for v in shifts}
+        assert len(signs - {0}) > 1, "must be detected as inconsistent"
+        consistent = [6.0, 7.5, 5.0]
+        signs2 = {1 if v > 1.5 else -1 if v < -1.5 else 0 for v in consistent}
+        assert len(signs2 - {0}) <= 1

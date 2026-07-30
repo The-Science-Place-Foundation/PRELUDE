@@ -121,6 +121,21 @@ CONTROL_TRIALS = 3
 #: two stimuli really are the same, not the distance matrix.
 NEAR_DUPLICATE_DISTANCE = 0.05
 
+#: Widest spread among a pitch-match staircase's finest-step reversals, in
+#: semitones, for the estimate to count as settled.
+#:
+#: A staircase always converges on something. Fed random answers it converges
+#: on noise, and the client's own "resolved" flag - which only checked that the
+#: finest step had been reached and reversed at twice - happily reported three
+#: such runs as resolved, with shifts of -20, +24 and -31 semitones. Physically
+#: incoherent, and reported as measurement.
+#:
+#: The finest rung is an eighth of an octave, 1.5 semitones, so a listener who
+#: is actually tracking pitch oscillates within about one or two rungs. A
+#: spread much wider than that means the reversals are scattered rather than
+#: bracketing anything.
+RELIABLE_SPREAD_ST = 4.0
+
 _sessions: dict[str, dict] = {}
 _pool: dict | None = None
 
@@ -159,6 +174,16 @@ def _load_mapping_manifest() -> dict | None:
         except (OSError, json.JSONDecodeError):
             return None
     return None
+
+
+def _finest_step_index() -> int:
+    """Index of the smallest step in the client's pitch-match ladder.
+
+    Kept in step with MAP_STEPS in app.js, where the ladder is [8, 4, 2, 1] in
+    eighth-octave units. Only reversals taken at the smallest step carry the
+    resolution the method claims.
+    """
+    return 3
 
 
 def _merge_by(prior: list | None, incoming: list | None, key: str,
@@ -925,8 +950,35 @@ class Handler(BaseHTTPRequestHandler):
             }
             # Derived here rather than in the browser, so the summary lives
             # with the data instead of on a phone.
+            # Re-derive reliability here rather than trusting the client's
+            # flag. The server owns the record, and a summary computed beside
+            # the data cannot drift from it.
+            for m in match:
+                if not isinstance(m, dict):
+                    continue
+                revs = [r for r in (m.get("reversals") or [])
+                        if isinstance(r, dict) and isinstance(r.get("hz"), (int, float))]
+                finest = [r["hz"] for r in revs
+                          if r.get("stepIx") == _finest_step_index()]
+                m["n_at_finest"] = len(finest)
+                if len(finest) >= 2 and min(finest) > 0:
+                    spread = 12 * math.log2(max(finest) / min(finest))
+                    m["spread_semitones"] = round(spread, 2)
+                    m["settled"] = spread <= RELIABLE_SPREAD_ST
+                else:
+                    m["spread_semitones"] = None
+                    m["settled"] = False
+                if not m["settled"]:
+                    m["why_not_settled"] = (
+                        "fewer than two reversals at the finest step"
+                        if len(finest) < 2 else
+                        f"finest-step reversals span "
+                        f"{m['spread_semitones']} semitones, wider than the "
+                        f"{RELIABLE_SPREAD_ST} allowed - the staircase never "
+                        f"settled, so this is not a measurement")
+
             resolved = [m for m in match
-                        if isinstance(m, dict) and m.get("resolved")
+                        if isinstance(m, dict) and m.get("settled")
                         and isinstance(m.get("shift_semitones"), (int, float))]
             if resolved:
                 shifts = sorted(m["shift_semitones"] for m in resolved)
@@ -940,6 +992,20 @@ class Handler(BaseHTTPRequestHandler):
                     "believing it" if mid < -1.5 else
                     "no appreciable shift, within this method's ~2 semitone "
                     "resolution")
+            # A frequency-place map should not change direction between
+            # neighbouring references. If it does, something other than pitch
+            # is driving the answers - timbre, or guessing.
+            if len(resolved) >= 2:
+                signs = {1 if m["shift_semitones"] > 1.5 else
+                         -1 if m["shift_semitones"] < -1.5 else 0
+                         for m in resolved}
+                record["direction_consistent"] = len(signs - {0}) <= 1
+                if not record["direction_consistent"]:
+                    record["consistency_warning"] = (
+                        "shifts disagree in direction across references, which "
+                        "a tonotopic map cannot do. Treat the whole set as "
+                        "unreliable rather than averaging it.")
+
             audible = [d for d in detect
                        if isinstance(d, dict) and d.get("heard") != "none"]
             if detect:
