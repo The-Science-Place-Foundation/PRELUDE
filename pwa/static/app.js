@@ -56,6 +56,19 @@ function audioCtx() {
   return S.ctx;
 }
 
+/* Wait for the context to actually be running before starting a source.
+   `resume()` is asynchronous and the old code did not await it, so playback
+   could be started on a context that had not resumed yet — which produces no
+   sound AND no 'ended' event. iOS also uses the state 'interrupted' for calls,
+   Siri and the lock screen, which the old check for 'suspended' missed. */
+async function audioReady() {
+  const ctx = audioCtx();
+  if (ctx.state !== 'running') {
+    try { await ctx.resume(); } catch { /* the caller's timeout handles it */ }
+  }
+  return ctx;
+}
+
 async function loadBuffer(name) {
   if (S.buffers.has(name)) return S.buffers.get(name);
   const res = await fetch(`/audio/${encodeURIComponent(name)}`);
@@ -73,34 +86,64 @@ async function loadBuffer(name) {
  * signal never exceeds the level it was rendered and peak-limited at. Boosting
  * would quietly undo the ceiling the file was written under.
  */
-function playBuffer(buf, implantDb = 0) {
+async function playBuffer(buf, implantDb = 0) {
+  const ctx = await audioReady();
   return new Promise((resolve) => {
-    const ctx = audioCtx();
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
+    let settled = false, timer = null, ended = false;
+    const finish = (why) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      /* 'ok' means the source reported it finished. 'silent' means it did not,
+         and the context is not running — so the sound almost certainly never
+         reached her and the caller must not treat her next answer as a
+         judgement about audio she never heard. */
+      resolve(why === 'ended' ? 'ok'
+        : (ctx.state === 'running' ? 'ok' : 'silent'));
+    };
 
-    if (!implantDb || buf.numberOfChannels < 2) {
-      src.connect(ctx.destination);
-    } else {
-      const split = ctx.createChannelSplitter(2);
-      const merge = ctx.createChannelMerger(2);
-      const gL = ctx.createGain(), gR = ctx.createGain();
-      const cut = Math.pow(10, -Math.abs(implantDb) / 20);
-      const implantIsRight = IMPLANT_EAR === 'right';
-      if (implantDb > 0) {          // implant louder: bring the other ear down
-        gL.gain.value = implantIsRight ? cut : 1;
-        gR.gain.value = implantIsRight ? 1 : cut;
-      } else {                      // implant quieter: bring the implant down
-        gL.gain.value = implantIsRight ? 1 : cut;
-        gR.gain.value = implantIsRight ? cut : 1;
+    let src;
+    try {
+      src = ctx.createBufferSource();
+      src.buffer = buf;
+
+      if (!implantDb || buf.numberOfChannels < 2) {
+        src.connect(ctx.destination);
+      } else {
+        const split = ctx.createChannelSplitter(2);
+        const merge = ctx.createChannelMerger(2);
+        const gL = ctx.createGain(), gR = ctx.createGain();
+        const cut = Math.pow(10, -Math.abs(implantDb) / 20);
+        const implantIsRight = IMPLANT_EAR === 'right';
+        if (implantDb > 0) {          // implant louder: bring the other ear down
+          gL.gain.value = implantIsRight ? cut : 1;
+          gR.gain.value = implantIsRight ? 1 : cut;
+        } else {                      // implant quieter: bring the implant down
+          gL.gain.value = implantIsRight ? 1 : cut;
+          gR.gain.value = implantIsRight ? cut : 1;
+        }
+        src.connect(split);
+        split.connect(gL, 0); split.connect(gR, 1);
+        gL.connect(merge, 0, 0); gR.connect(merge, 0, 1);
+        merge.connect(ctx.destination);
       }
-      src.connect(split);
-      split.connect(gL, 0); split.connect(gR, 1);
-      gL.connect(merge, 0, 0); gR.connect(merge, 0, 1);
-      merge.connect(ctx.destination);
+
+      src.onended = () => { ended = true; finish('ended'); };
+      src.start();
+    } catch {
+      finish('threw');
+      return;
     }
-    src.onended = resolve;
-    src.start();
+
+    /* SAFETY NET, and the reason this function is shaped like this.
+       'ended' is not guaranteed. A context interrupted mid-playback never
+       fires it, and the awaiting caller then never reaches its `finally` — so
+       every control stays disabled and the listener is stuck on a trial with
+       no way forward and no explanation. That happened during a real session.
+       A missed sound is recoverable; a dead screen at the end of a long day
+       is not. */
+    timer = setTimeout(() => finish(ended ? 'ended' : 'timeout'),
+                       (buf.duration + 2.0) * 1000);
   });
 }
 
@@ -572,8 +615,17 @@ async function startMapping() {
   const prior = (await api('/api/mapping').catch(() => ({}))).result || {};
   MAP.detect = Array.isArray(prior.detect) ? prior.detect.slice() : [];
   MAP.match = Array.isArray(prior.match) ? prior.match.filter(m => m && m.resolved) : [];
-  MAP.detectIx = MAP.detect.length;
-  MAP.matchIx = MAP.match.length;
+  /* Resume by WHICH frequencies are already answered, not by how many.
+     Counting assumed the stored answers were a prefix of the manifest, and
+     they need not be: when five spurious entries reached the record, a count
+     of five skipped the listener straight past the first five bands and she
+     was never asked them at all. Positions are what matter, not totals. */
+  const answered = new Set(MAP.detect.map(d => d.center_hz));
+  MAP.detectIx = MAP.manifest.detect.findIndex(r => !answered.has(r.center_hz));
+  if (MAP.detectIx < 0) MAP.detectIx = MAP.manifest.detect.length;
+  const matched = new Set(MAP.match.map(m => m.ci_hz));
+  MAP.matchIx = MAP.manifest.match.findIndex(r => !matched.has(r.center_hz));
+  if (MAP.matchIx < 0) MAP.matchIx = MAP.manifest.match.length;
 
   const dTotal = MAP.manifest.detect.length;
   const mTotal = MAP.manifest.match.length;
@@ -592,10 +644,21 @@ async function startMapping() {
 
 function mapDetectShow() {
   const d = MAP.manifest.detect;
+  /* Skip anything already answered, so a resumed session asks only what is
+     genuinely outstanding rather than marching from an index. */
+  const answered = new Set(MAP.detect.map(x => x.center_hz));
+  while (MAP.detectIx < d.length && answered.has(d[MAP.detectIx].center_hz)) {
+    MAP.detectIx += 1;
+  }
   if (MAP.detectIx >= d.length) { mapMatchBegin(); return; }
   $('mdCount').textContent = `Whisper ${MAP.detectIx + 1} of ${d.length}`;
-  $('mdPlay').textContent = 'Play it';
+  /* The answer buttons stay locked until this one has been heard — answering
+     before playing would record a verdict about nothing. Say so, because
+     otherwise the locked buttons read as the app being broken. */
+  $('mdPlay').textContent = MAP.detectIx ? 'Play the next one' : 'Play it';
+  $('mdHint').textContent = 'Play it first, then say what you heard.';
   $('mdClear').disabled = $('mdFaint').disabled = $('mdNone').disabled = true;
+  $('mdSkip').disabled = false;
   show('mapdetect');
 }
 
@@ -603,20 +666,33 @@ $('mdPlay').addEventListener('click', async () => {
   if (MAP.playing) return;
   MAP.playing = true;
   $('mdPlay').disabled = true;
+  $('mdHint').textContent = '';
   const rec = MAP.manifest.detect[MAP.detectIx];
   try {
     const buf = await loadBuffer(rec.file);
     const acousticIsLeft = IMPLANT_EAR !== 'left';
     $(acousticIsLeft ? 'mdL' : 'mdR').classList.add('on');
-    await playBuffer(buf);          /* no balance offset: one ear, by design */
+    const how = await playBuffer(buf);   /* no balance offset: one ear, by design */
     earsOff('mdL', 'mdR');
-    $('mdClear').disabled = $('mdFaint').disabled = $('mdNone').disabled = false;
-    $('mdPlay').textContent = 'Play again';
+    if (how === 'silent') {
+      /* Do NOT enable the answers. "Nothing" would be recorded as a threshold
+         result for a band that was never actually played, which is a false
+         measurement rather than a missing one. */
+      $('mdHint').textContent = 'That did not play — the phone may have been '
+        + 'interrupted. Tap play again.';
+      $('mdPlay').textContent = 'Play it again';
+    } else {
+      $('mdClear').disabled = $('mdFaint').disabled = $('mdNone').disabled = false;
+      $('mdPlay').textContent = 'Play again';
+    }
   } catch {
-    show('trouble');
+    /* A load failure is not a reason to strand her on a dead screen. */
+    $('mdHint').textContent = 'That sound would not load. Skip it, or try again.';
+    $('mdSkip').disabled = false;
   } finally {
     MAP.playing = false;
     $('mdPlay').disabled = false;
+    $('mdSkip').disabled = false;
   }
 });
 
@@ -627,6 +703,15 @@ function mapDetectAnswer(verdict) {
   mapSave();                        /* durable now, not at the end */
   mapDetectShow();
 }
+$('mdSkip').addEventListener('click', () => {
+  /* Recorded as skipped, never as "nothing". A band that could not be played
+     or judged is missing data; calling it inaudible would invent a threshold. */
+  const rec = MAP.manifest.detect[MAP.detectIx];
+  MAP.detect.push({ center_hz: rec.center_hz, file: rec.file, heard: 'skipped' });
+  MAP.detectIx += 1;
+  mapSave();
+  mapDetectShow();
+});
 $('mdClear').addEventListener('click', () => mapDetectAnswer('clear'));
 $('mdFaint').addEventListener('click', () => mapDetectAnswer('faint'));
 $('mdNone').addEventListener('click', () => mapDetectAnswer('none'));
@@ -640,6 +725,10 @@ function mapMatchBegin() {
 
 function mapMatchNext() {
   const refs = MAP.manifest.match;
+  const done = new Set(MAP.match.filter(m => m.resolved).map(m => m.ci_hz));
+  while (MAP.matchIx < refs.length && done.has(refs[MAP.matchIx].center_hz)) {
+    MAP.matchIx += 1;
+  }
   if (MAP.matchIx >= refs.length) { mapFinish(); return; }
   const ref = refs[MAP.matchIx];
   /* Start a full octave away, alternating side between references so the
@@ -672,19 +761,27 @@ $('mmPlay').addEventListener('click', async () => {
     const [a, b] = await Promise.all([loadBuffer(st.ref.file), loadBuffer(probe.file)]);
     const implantIsRight = IMPLANT_EAR === 'right';
     $(implantIsRight ? 'mmR' : 'mmL').classList.add('on');
-    await playBuffer(a);
+    const h1 = await playBuffer(a);
     earsOff('mmL', 'mmR');
     await new Promise(r => setTimeout(r, 420));
     $(implantIsRight ? 'mmL' : 'mmR').classList.add('on');
-    await playBuffer(b);
+    const h2 = await playBuffer(b);
     earsOff('mmL', 'mmR');
-    mapMatchButtons(false);
-    $('mmPlay').textContent = 'Play again';
+    if (h1 === 'silent' || h2 === 'silent') {
+      /* Half a pair is not a comparison. */
+      $('mmHint').textContent = 'One of those did not play. Tap play again.';
+      $('mmPlay').textContent = 'Play both again';
+    } else {
+      $('mmHint').textContent = '';
+      mapMatchButtons(false);
+      $('mmPlay').textContent = 'Play again';
+    }
   } catch {
-    show('trouble');
+    $('mmHint').textContent = 'Those would not load. Skip this pair, or try again.';
   } finally {
     MAP.playing = false;
     $('mmPlay').disabled = false;
+    $('mmSkip').disabled = false;
   }
 });
 
@@ -703,6 +800,7 @@ function mapMatchAnswer(higher) {
        which is itself a finding. */
     if (st.trials >= MAP_MAX_TRIALS) { mapMatchDone(); return; }
     mapMatchButtons(true);
+    $('mmHint').textContent = 'Play the next pair, then answer.';
     $('mmPlay').textContent = 'Play both';
     return;
   }
@@ -727,8 +825,16 @@ function mapMatchAnswer(higher) {
     return;
   }
   mapMatchButtons(true);
+  $('mmHint').textContent = 'Play the next pair, then answer.';
   $('mmPlay').textContent = 'Play both';
 }
+
+$('mmSkip').addEventListener('click', () => {
+  /* Abandon this reference and move on. Saved unresolved rather than dropped,
+     because "she could not do this one" is itself worth knowing — the 500 Hz
+     staircase pinning against the ladder floor is exactly that finding. */
+  mapMatchDone();
+});
 $('mmFirst').addEventListener('click', () => mapMatchAnswer('first'));
 $('mmSecond').addEventListener('click', () => mapMatchAnswer('second'));
 $('mmUnsure').addEventListener('click', () => mapMatchAnswer('unsure'));
