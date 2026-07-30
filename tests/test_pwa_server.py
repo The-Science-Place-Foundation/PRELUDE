@@ -585,3 +585,83 @@ class TestPitchMatchStaircase:
         ns = [n for _, n in (self._run(1500.0, 2.0, k % 2 == 0, seed=f"e{k}")
                              for k in range(120))]
         assert statistics.median(ns) <= 13
+
+
+class TestMappingSurvivesMultipleSittings:
+    """The map is expected to take several sittings, so nothing may be lost.
+
+    The first version of the endpoint wrote whatever the current visit had
+    collected straight over the file. Answering four bands, stopping, and
+    returning to answer two would have left two - silently discarding real
+    measurements from a listener who cannot easily be asked to repeat them.
+    """
+
+    def test_a_later_sitting_does_not_erase_an_earlier_one(self, srv):
+        a = [{"center_hz": 250.0, "heard": "clear"},
+             {"center_hz": 500.0, "heard": "faint"}]
+        b = [{"center_hz": 1000.0, "heard": "none"}]
+        merged = srv._merge_by(a, b, "center_hz")
+        assert [m["center_hz"] for m in merged] == [250.0, 500.0, 1000.0]
+
+    def test_re_answering_a_band_updates_it(self, srv):
+        a = [{"center_hz": 250.0, "heard": "none"}]
+        b = [{"center_hz": 250.0, "heard": "clear"}]
+        merged = srv._merge_by(a, b, "center_hz")
+        assert len(merged) == 1 and merged[0]["heard"] == "clear"
+
+    def test_a_resolved_match_is_never_replaced_by_an_abandoned_one(self, srv):
+        """Half a staircase must not overwrite a completed one."""
+        prior = [{"ci_hz": 1500.0, "match_hz": 2121.0, "resolved": True}]
+        later = [{"ci_hz": 1500.0, "match_hz": None, "resolved": False}]
+        merged = srv._merge_by(prior, later, "ci_hz", prefer="resolved")
+        assert merged[0]["resolved"] is True and merged[0]["match_hz"] == 2121.0
+
+    def test_a_resolved_match_does_replace_an_unresolved_one(self, srv):
+        prior = [{"ci_hz": 1500.0, "match_hz": None, "resolved": False}]
+        later = [{"ci_hz": 1500.0, "match_hz": 2121.0, "resolved": True}]
+        merged = srv._merge_by(prior, later, "ci_hz", prefer="resolved")
+        assert merged[0]["resolved"] is True
+
+    def test_order_follows_when_it_was_first_measured(self, srv):
+        a = [{"center_hz": 4000.0, "heard": "none"}]
+        b = [{"center_hz": 250.0, "heard": "clear"}, {"center_hz": 4000.0, "heard": "faint"}]
+        assert [m["center_hz"] for m in srv._merge_by(a, b, "center_hz")] == [4000.0, 250.0]
+
+    def test_malformed_entries_are_skipped_not_fatal(self, srv):
+        a = [{"center_hz": 250.0, "heard": "clear"}, "garbage", {"no_key": 1}]
+        merged = srv._merge_by(a, None, "center_hz")
+        assert len(merged) == 1
+
+    def test_missing_prior_or_incoming_is_fine(self, srv):
+        assert srv._merge_by(None, None, "center_hz") == []
+        assert len(srv._merge_by(None, [{"center_hz": 1.0}], "center_hz")) == 1
+        assert len(srv._merge_by([{"center_hz": 1.0}], None, "center_hz")) == 1
+
+
+class TestMappingRejectsAnythingNotFromTheApp:
+    """Verification must not be able to write to the live record.
+
+    While this endpoint was being checked with hand-made requests, five of the
+    listener's real detection answers were overwritten. The merge keys on
+    frequency and had no way to distinguish a measurement from a probe, and the
+    probe values looked entirely plausible. Requiring the stimulus filename -
+    which the app always sends and a hand-made request generally will not -
+    closes that path.
+    """
+
+    def test_an_entry_without_a_stimulus_file_is_refused(self, srv):
+        from_app = [{"center_hz": 250.0, "heard": "clear", "file": "map_detect_250.wav"}]
+        probe = [{"center_hz": 250.0, "heard": "none"}]
+        keep = [i for i in probe
+                if isinstance(i, dict) and isinstance(i.get("file"), str)]
+        assert keep == [], "a probe with no file must not be accepted"
+        merged = srv._merge_by(from_app, keep, "center_hz")
+        assert merged[0]["heard"] == "clear", "the real answer must survive"
+
+    def test_a_traversal_style_filename_is_refused(self, srv):
+        bad = {"center_hz": 250.0, "heard": "clear", "file": "../../etc/passwd"}
+        assert not srv.SAFE_NAME.match(bad["file"])
+
+    def test_a_normal_stimulus_filename_passes(self, srv):
+        assert srv.SAFE_NAME.match("map_detect_4500.wav")
+        assert srv.SAFE_NAME.match("map_ci_1500.wav")

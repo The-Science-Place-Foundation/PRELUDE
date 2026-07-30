@@ -161,6 +161,35 @@ def _load_mapping_manifest() -> dict | None:
     return None
 
 
+def _merge_by(prior: list | None, incoming: list | None, key: str,
+              prefer: str | None = None) -> list:
+    """Combine two lists of measurements keyed on a frequency.
+
+    Incoming entries win, except that an entry flagged by ``prefer`` is never
+    replaced by one that is not - a resolved staircase must not be overwritten
+    by a later abandoned attempt at the same frequency.
+
+    Order follows first-seen, so the record reads in the order it was measured.
+    """
+    out: dict = {}
+    order: list = []
+    for src in (prior or [], incoming or []):
+        if not isinstance(src, list):
+            continue
+        for item in src:
+            if not isinstance(item, dict) or key not in item:
+                continue
+            k = item[key]
+            if k not in out:
+                order.append(k)
+                out[k] = item
+                continue
+            if prefer and out[k].get(prefer) and not item.get(prefer):
+                continue          # keep the resolved one
+            out[k] = item
+    return [out[k] for k in order]
+
+
 def _read_mapping_result() -> dict | None:
     f = MAPPING_FILE()
     if f.is_file():
@@ -851,13 +880,45 @@ class Handler(BaseHTTPRequestHandler):
             # frequency. Written on every answer rather than at the end - a
             # partial map is useful, and holding it in memory until a "finish"
             # that may never come already lost one session outright.
-            detect = payload.get("detect") or []
-            match = payload.get("match") or []
+            # MERGE with what is already on disk, never replace it.
+            #
+            # The map is explicitly expected to take several sittings, and the
+            # first version of this endpoint overwrote the file with whatever
+            # the current visit had collected. Answering four bands, stopping,
+            # and coming back to answer two would have left two - silently
+            # discarding real measurements from someone who cannot easily be
+            # asked to repeat them.
+            # Only accept entries that name the stimulus file they came from.
+            #
+            # The app always sends it. Nothing else does - and a hand-made
+            # request without it overwrote five of the listener's real answers
+            # during verification of this very endpoint, because the merge keys
+            # on frequency and had no way to tell a measurement from a probe.
+            # Verification must not be able to reach the live record.
+            def _from_the_app(items: object) -> list:
+                if not isinstance(items, list):
+                    return []
+                return [i for i in items
+                        if isinstance(i, dict) and isinstance(i.get("file"), str)
+                        and SAFE_NAME.match(i["file"])]
+
+            incoming_detect = _from_the_app(payload.get("detect"))
+            incoming_match = _from_the_app(payload.get("match"))
+            rejected = ((len(payload.get("detect") or []) - len(incoming_detect))
+                        + (len(payload.get("match") or []) - len(incoming_match)))
+
+            prior = _read_mapping_result() or {}
+            detect = _merge_by(prior.get("detect"), incoming_detect, "center_hz")
+            match = _merge_by(prior.get("match"), incoming_match, "ci_hz",
+                              prefer="resolved")
             record = {
                 "detect": detect,
                 "match": match,
                 "complete": bool(payload.get("complete")),
                 "measured_at": _now(),
+                "first_measured_at": prior.get("first_measured_at") or _now(),
+                "sittings": (prior.get("sittings") or 0) + (
+                    1 if not prior else 0),
                 # Stamped so a map cannot be silently read against stimuli it
                 # was not collected with - the same reasoning as pool_id.
                 "stimulus_set": (_load_mapping_manifest() or {}).get("target_lufs"),
@@ -887,7 +948,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 SESSION_DIR.mkdir(parents=True, exist_ok=True)
                 MAPPING_FILE().write_text(json.dumps(record, indent=2))
-                self._json(200, {"saved": True, "result": record})
+                self._json(200, {"saved": True, "result": record,
+                                 "rejected_entries": rejected})
             except OSError as exc:
                 self._json(200, {"saved": False,
                                  "error": f"could not write: {exc.strerror}",

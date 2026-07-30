@@ -565,8 +565,26 @@ async function startMapping() {
     show('trouble');
     return;
   }
-  MAP.detectIx = 0; MAP.detect = [];
-  MAP.matchIx = 0; MAP.match = [];
+  /* Resume, rather than start over.
+     This is expected to take several sittings, so anything already answered
+     must not be asked again — repeating a tedious task is how a listener stops
+     cooperating, and it happened here before with the balance staircase. */
+  const prior = (await api('/api/mapping').catch(() => ({}))).result || {};
+  MAP.detect = Array.isArray(prior.detect) ? prior.detect.slice() : [];
+  MAP.match = Array.isArray(prior.match) ? prior.match.filter(m => m && m.resolved) : [];
+  MAP.detectIx = MAP.detect.length;
+  MAP.matchIx = MAP.match.length;
+
+  const dTotal = MAP.manifest.detect.length;
+  const mTotal = MAP.manifest.match.length;
+  const doneAll = MAP.detectIx >= dTotal && MAP.matchIx >= mTotal;
+  $('mapIntroNote').textContent = doneAll
+    ? 'This is already finished. Going again replaces it with fresh answers.'
+    : (MAP.detectIx || MAP.matchIx)
+      ? `Picking up where you left off — ${MAP.detectIx} of ${dTotal} whispers `
+        + `and ${MAP.matchIx} of ${mTotal} pairs already done.`
+      : '';
+  if (doneAll) { MAP.detect = []; MAP.match = []; MAP.detectIx = MAP.matchIx = 0; }
   show('mapintro');
 }
 
