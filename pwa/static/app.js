@@ -742,7 +742,7 @@ function mapMatchNext() {
     mapNearestProbe(ref.center_hz) + (from_below ? -MAP_STEPS[0] : MAP_STEPS[0])));
   MAP.st = {
     ref, i: start, stepIx: 0, dir: null,
-    reversals: [], trials: 0, from_below, responses: [],
+    reversals: [], trials: 0, from_below, responses: [], sameAt: [],
   };
   $('mmCount').textContent = `Pair ${MAP.matchIx + 1} of ${refs.length}`;
   $('mmPlay').textContent = 'Play both';
@@ -752,7 +752,8 @@ function mapMatchNext() {
 }
 
 function mapMatchButtons(disabled) {
-  $('mmFirst').disabled = $('mmSecond').disabled = $('mmUnsure').disabled = disabled;
+  $('mmFirst').disabled = $('mmSecond').disabled = disabled;
+  $('mmSame').disabled = $('mmUnsure').disabled = disabled;
 }
 
 /* Shared by the auto-advance and the manual button, so there is exactly one
@@ -806,11 +807,39 @@ function mapMatchAnswer(higher) {
   const probe = MAP.manifest.probe[st.i];
   st.trials += 1;
   st.responses.push({ probe_hz: probe.center_hz, higher });
+  const last = MAP.manifest.probe.length - 1;
+
+  /* "The same" is not a failure to answer — it is THE answer.
+     A pitch match is looking for the frequency at which the two percepts sit
+     at the same height, so an equality report at probe P is direct evidence
+     that the match is at P, and stronger evidence than any single
+     higher/lower judgement. There was no way to say it, so the only honest
+     move available was to skip the reference, and two of three references in
+     a control run ended that way.
+
+     Note this is a PERCEPTUAL report. Nobody resolves a 1 Hz difference, and
+     the match point is a region rather than a frequency; "the same" means the
+     two sat at the same height to a human ear, which is exactly the quantity
+     being measured. */
+  if (higher === 'same') {
+    st.sameAt.push(probe.center_hz);
+    st.stepIx = MAP_STEPS.length - 1;      /* we are close; go to fine steps */
+    if (st.sameAt.length >= 2 || st.trials >= MAP_MAX_TRIALS) {
+      mapMatchDone();
+      return;
+    }
+    /* Confirm it from the other side by nudging one fine rung, so a single
+       lucky "same" cannot carry the estimate on its own. */
+    st.i = Math.max(0, Math.min(last, st.i + (st.sameAt.length % 2 ? 1 : -1)));
+    mapMatchButtons(true);
+    mapAdvance();
+    return;
+  }
 
   if (higher === 'unsure') {
-    /* Not a direction, so it cannot move the ladder. Recorded because a run
-       of them means the two percepts are not comparable at this frequency,
-       which is itself a finding. */
+    /* Genuinely not comparable — a different thing from "the same". Kept
+       because a run of these is itself a finding: it says the two percepts
+       cannot be placed on one pitch scale at this frequency. */
     if (st.trials >= MAP_MAX_TRIALS) { mapMatchDone(); return; }
     mapMatchButtons(true);
     mapAdvance();
@@ -820,14 +849,11 @@ function mapMatchAnswer(higher) {
   const probeHigher = higher === 'second';
   const newDir = probeHigher ? 'down' : 'up';
   if (st.dir !== null && newDir !== st.dir) {
-    /* Step size is recorded with the reversal, because only the reversals
-       taken at the finest step carry the resolution this method claims. */
     st.reversals.push({ hz: probe.center_hz, stepIx: st.stepIx });
     if (st.stepIx < MAP_STEPS.length - 1) st.stepIx += 1;
   }
   st.dir = newDir;
   st.i += probeHigher ? -MAP_STEPS[st.stepIx] : MAP_STEPS[st.stepIx];
-  const last = MAP.manifest.probe.length - 1;
   const pinned = st.i < 0 || st.i > last;
   st.i = Math.max(0, Math.min(last, st.i));
 
@@ -837,28 +863,11 @@ function mapMatchAnswer(higher) {
     return;
   }
   mapMatchButtons(true);
-  /* Play the next pair automatically rather than waiting for a tap.
-
-     Requiring a tap between trials produced a screen where every answer
-     button was disabled and the only live control was "Skip this pair" — so
-     the natural next action ended the staircase. Two of three references in a
-     test run died after a single trial exactly that way, and it was reported
-     twice as the app refusing to advance.
-
-     Safe to start here: the context was unlocked by an earlier gesture and is
-     already running, and autoplay restrictions apply to resuming a context
-     rather than to starting a source on a running one. If it fails anyway,
-     playBuffer times out and reports it instead of hanging. */
   mapAdvance();
 }
 
-$('mmSkip').addEventListener('click', () => {
-  /* Abandon this reference and move on. Saved unresolved rather than dropped,
-     because "she could not do this one" is itself worth knowing — the 500 Hz
-     staircase pinning against the ladder floor is exactly that finding. */
-  mapMatchDone();
-});
 $('mmFirst').addEventListener('click', () => mapMatchAnswer('first'));
+$('mmSame').addEventListener('click', () => mapMatchAnswer('same'));
 $('mmSecond').addEventListener('click', () => mapMatchAnswer('second'));
 $('mmUnsure').addEventListener('click', () => mapMatchAnswer('unsure'));
 
@@ -871,10 +880,19 @@ function mapMatchDone() {
      Geometric mean, because pitch is logarithmic — averaging in Hz would bias
      every estimate upward. */
   const finest = st.reversals.filter(r => r.stepIx === MAP_STEPS.length - 1);
-  const use = (finest.length >= 2 ? finest : st.reversals).slice(-4);
-  const est = use.length
-    ? Math.pow(2, use.reduce((a, r) => a + Math.log2(r.hz), 0) / use.length)
-    : null;
+  /* Equality reports first. They locate the match directly, whereas reversals
+     only bracket it by overshooting either side. */
+  let est = null, method = null;
+  if (st.sameAt.length >= 1) {
+    est = Math.pow(2, st.sameAt.reduce((a, h) => a + Math.log2(h), 0) / st.sameAt.length);
+    method = st.sameAt.length >= 2 ? 'equality' : 'equality-single';
+  } else {
+    const use = (finest.length >= 2 ? finest : st.reversals).slice(-4);
+    est = use.length
+      ? Math.pow(2, use.reduce((a, r) => a + Math.log2(r.hz), 0) / use.length)
+      : null;
+    method = use.length ? 'reversals' : null;
+  }
   MAP.match.push({
     ci_hz: st.ref.center_hz,
     file: st.ref.file,
@@ -887,7 +905,9 @@ function mapMatchDone() {
     /* Resolved means it reached the finest step and reversed there at least
        twice. Anything less is a coarse estimate and must not be read as a
        measurement at this method's stated resolution. */
-    resolved: est !== null && finest.length >= 2,
+    method,
+    same_at: st.sameAt,
+    resolved: est !== null && (st.sameAt.length >= 2 || finest.length >= 2),
     at_finest_step: finest.length,
     responses: st.responses,
   });

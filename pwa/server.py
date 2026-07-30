@@ -961,16 +961,32 @@ class Handler(BaseHTTPRequestHandler):
                 finest = [r["hz"] for r in revs
                           if r.get("stepIx") == _finest_step_index()]
                 m["n_at_finest"] = len(finest)
-                if len(finest) >= 2 and min(finest) > 0:
-                    spread = 12 * math.log2(max(finest) / min(finest))
+                # Equality reports locate the match directly; reversals only
+                # bracket it by overshooting either side. So when the listener
+                # has said "these sit at the same height", judge on those.
+                same = [h for h in (m.get("same_at") or [])
+                        if isinstance(h, (int, float)) and h > 0]
+                basis = same if len(same) >= 2 else (
+                    finest if len(finest) >= 2 else same)
+                m["basis"] = ("equality" if basis is same and same else
+                              "reversals" if basis else None)
+                if len(basis) >= 2 and min(basis) > 0:
+                    spread = 12 * math.log2(max(basis) / min(basis))
                     m["spread_semitones"] = round(spread, 2)
                     m["settled"] = spread <= RELIABLE_SPREAD_ST
+                elif len(same) == 1:
+                    # One equality report is real evidence but unconfirmed.
+                    m["spread_semitones"] = None
+                    m["settled"] = False
                 else:
                     m["spread_semitones"] = None
                     m["settled"] = False
                 if not m["settled"]:
                     m["why_not_settled"] = (
-                        "fewer than two reversals at the finest step"
+                        "one equality report, unconfirmed from the other side"
+                        if len(same) == 1 else
+                        "no equality report and fewer than two reversals at "
+                        "the finest step"
                         if len(finest) < 2 else
                         f"finest-step reversals span "
                         f"{m['spread_semitones']} semitones, wider than the "

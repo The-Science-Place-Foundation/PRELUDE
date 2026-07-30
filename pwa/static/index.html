@@ -71,10 +71,10 @@
   <!-- Mapping part 2: which sounded higher -->
   <section class="view hidden" id="v-mapmatch" data-view="mapmatch">
     <p class="quiet" id="mmCount">&nbsp;</p>
-    <h1 class="display sm">Which sounded higher?</h1>
+    <h1 class="display sm">Which sat higher?</h1>
     <p class="quiet narrow">The first goes to the implant, the second to the
-      aided ear. They will not sound alike &mdash; ignore that, and judge only
-      which sat <em>higher</em>.</p>
+      aided ear. The <em>texture</em> will differ &mdash; ignore that. Judge only
+      pitch: which one sat higher, or whether they sat at the same height.</p>
     <button class="brass" id="mmPlay">Play both</button>
     <div class="ears" aria-hidden="true">
       <span><i class="dot" id="mmL"></i>Left</span>
@@ -83,9 +83,10 @@
     <div class="rule"></div>
     <div class="row">
       <button class="brass sm" id="mmFirst" disabled>The first</button>
+      <button class="brass sm" id="mmSame" disabled>The same</button>
       <button class="brass sm" id="mmSecond" disabled>The second</button>
     </div>
-    <button class="plain sm" id="mmUnsure" disabled>Too different to tell</button>
+    <button class="plain sm" id="mmUnsure" disabled>Can&rsquo;t compare these at all</button>
     <p class="quiet narrow brass-text" id="mmHint"></p>
     <button class="plain tiny" id="mmSkip">Skip this pair</button>
     <p class="foot">Stop anytime &middot; what is done so far is kept</p>

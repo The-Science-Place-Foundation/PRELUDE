@@ -97,7 +97,7 @@ GAP_MS = 350
 
 
 def _burst(center_hz: float, sample_rate: int = SR, ms: int = BURST_MS,
-           seed: int = 0) -> np.ndarray:
+           seed: int = 0, role: str = "") -> np.ndarray:
     """One third-octave noise burst, ramped.
 
     Ramps matter more than they look: a hard-gated burst splatters energy across
@@ -105,7 +105,16 @@ def _burst(center_hz: float, sample_rate: int = SR, ms: int = BURST_MS,
     stimulus.
     """
     n = int(sample_rate * ms / 1000)
-    rng = np.random.default_rng(int(center_hz) * 1000 + seed)
+    # The role is part of the seed, so a reference and a probe at the SAME
+    # frequency are different noise rather than the identical waveform.
+    #
+    # They were identical, and it mattered at precisely the frequency where the
+    # measurement happens: the probe ladder lands exactly on 500 Hz, which is
+    # also a reference, so the match point presented a sound against itself.
+    # "They sound the same" would then have been an artefact of sharing a
+    # generator rather than a judgement that the pitches agreed.
+    role_offset = sum(ord(c) for c in role) * 7919
+    rng = np.random.default_rng(int(center_hz) * 1000 + seed + role_offset)
     x = rng.standard_normal(n)
 
     lo = center_hz / (2 ** (1 / 6))
@@ -193,7 +202,8 @@ def main() -> int:
           f"{acoustic.value} (acoustic) ear:")
     for f in DETECT_HZ:
         # Two bursts, so a momentary distraction does not read as absence.
-        mono = np.concatenate([_burst(f), _silence(GAP_MS), _burst(f, seed=1)])
+        mono = np.concatenate([_burst(f, role="detect"), _silence(GAP_MS),
+                               _burst(f, seed=1, role="detect")])
         rec = write(f"map_detect_{int(f)}.wav", _one_ear(mono, acoustic))
         rec["center_hz"] = f
         manifest["detect"].append(rec)
@@ -202,7 +212,8 @@ def main() -> int:
     # ---- part 2a: implant-ear references -------------------------------
     print(f"\npitch-match references, to the {implant.value} (implant) ear:")
     for f in MATCH_HZ:
-        mono = np.concatenate([_burst(f), _silence(GAP_MS), _burst(f, seed=1)])
+        mono = np.concatenate([_burst(f, role="reference"), _silence(GAP_MS),
+                               _burst(f, seed=1, role="reference")])
         rec = write(f"map_ci_{int(f)}.wav", _one_ear(mono, implant))
         rec["center_hz"] = f
         manifest["match"].append(rec)
@@ -215,7 +226,8 @@ def main() -> int:
         if f * (2 ** (1 / 6)) >= SR / 2 * 0.98:
             print(f"  skipped {f:.0f} Hz - band would cross Nyquist")
             continue
-        mono = np.concatenate([_burst(f), _silence(GAP_MS), _burst(f, seed=1)])
+        mono = np.concatenate([_burst(f, role="probe"), _silence(GAP_MS),
+                               _burst(f, seed=1, role="probe")])
         rec = write(f"map_probe_{int(round(f))}.wav", _one_ear(mono, acoustic))
         rec["center_hz"] = f
         manifest["probe"].append(rec)
