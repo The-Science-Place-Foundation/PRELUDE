@@ -32,19 +32,19 @@ preference is for **tightly synchronised pulsatile stimulation**, not merely for
 
 ## The level confound is excluded
 
-This was the whole purpose of the rebuild. In the pool she heard:
+This was the whole purpose of the rebuild. In the pool presented:
 
 - spread across all 20 candidates: **0.234 dB**
 - `carrier_pulse`: **−26.61 LUFS**, mid-pack, 0.10 dB from the median
   (previously −27.94 against a field spanning 0.20 dB — 3.09 dB quieter)
 - **level control: 2 of 3** chose the quieter interval. Mixed, so no evidence
-  that level alone drives her choices. n = 3, so this is weak on its own; its
+  that level alone drives the choices. n = 3, so this is weak on its own; its
   value is that it is no longer *consistent* with a pure level effect.
 
 ## A new confound, and why it does not sink the result
 
 `carrier_pulse` occupied **the second interval on all 5 trials** it appeared in,
-and she chose the second interval on 5 of 6 real trials. Within this session
+and the second interval was chosen on 5 of 6 real trials. Within this session
 alone, "preferred that candidate" and "pressed the second button" predict
 identical data.
 
@@ -54,7 +54,7 @@ pairs, the leader landed in slot 1 every time. The shuffle itself was not
 broken — measured 0.501 over 4000 seeds. Randomness streaks.
 
 **What excludes it is the earlier session.** There, `carrier_pulse` appeared in
-slot 0 four times and slot 1 twice, and she chose it all six times:
+slot 0 four times and slot 1 twice, and it was chosen all six times:
 
 ```
   a= 3 b= 9 order=[1,0]  chose slot 0 -> carrier_pulse   (slot 0)
@@ -65,9 +65,9 @@ slot 0 four times and slot 1 twice, and she chose it all six times:
   a= 9 b=14 order=[0,1]  chose slot 0 -> carrier_pulse   (slot 0)
 ```
 
-She tracked the same stimulus across both screen positions. A position bias
+The listener tracked the same stimulus across both screen positions. A position bias
 cannot produce that. Pooled catch trials point the other way as well — 3 of 3 on
-the *first* interval, the opposite slot from the one she favoured on 2026-07-29
+the *first* interval, the opposite slot from the one favoured on 2026-07-29
 — though at n = 3 that is a hint, not a measurement.
 
 So each session carries a confound the other excludes: the first was
@@ -113,6 +113,6 @@ It agrees with the literature in a way worth noting rather than trusting.
 Pulsatile carriers are the physically correct model of what an implant does, and
 noise-band vocoders are known to be a convenience of the intelligibility
 literature rather than a faithful percept model. A listener preferring the
-pulsatile simulation as *closer to her own percept* is the expected direction.
+pulsatile simulation as *closer to their own percept* is the expected direction.
 Agreement that neat deserves the same scrutiny as a surprise — hence the
 controls above.
