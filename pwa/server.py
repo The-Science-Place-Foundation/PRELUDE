@@ -517,6 +517,19 @@ def _next_trial(sess: dict) -> dict | None:
     total = len(cands)
     rng = random.Random(f"{sess['session_id']}:{n}")
 
+    def counterbalanced_order() -> list[int]:
+        """Which slot gets the first-named stimulus, balanced in blocks of two.
+
+        See the note at the candidate-trial call site: independent per-trial
+        draws streaked far enough in one real session to place the favoured
+        candidate in the same interval five times running.
+        """
+        blk = random.Random(f"{sess['session_id']}:block:{n // 2}")
+        flip = blk.random() < 0.5
+        if n % 2 == 0:
+            return [0, 1] if flip else [1, 0]
+        return [1, 0] if flip else [0, 1]
+
     # ---- level control, first --------------------------------------------
     # Identical audio at two levels. If the listener reliably picks the
     # quieter interval, then any candidate preference that happens to
@@ -530,8 +543,7 @@ def _next_trial(sess: dict) -> dict | None:
     ctrl = pool.get("control_pair")
     if ctrl and n < CONTROL_TRIALS:
         files = list(ctrl["files"])            # [reference, quieter]
-        order = [0, 1]
-        rng.shuffle(order)
+        order = counterbalanced_order()
         trial = {
             "trial_id": uuid.uuid4().hex[:10],
             "index": n,
@@ -590,8 +602,23 @@ def _next_trial(sess: dict) -> dict | None:
             best = (order[0], order[1])
         a, b = best
 
-    order = [0, 1]
-    rng.shuffle(order)
+    # Presentation order, counterbalanced in blocks of two rather than drawn
+    # independently per trial.
+    #
+    # Independent coin flips streak, and a streak here is not cosmetic. The
+    # information-gain selector puts the leading candidate first in most pairs,
+    # so the order decides which slot the leader occupies - and in the session
+    # of 2026-07-29 the per-trial draws came up [1,0] six times running, which
+    # placed the favoured candidate in the second interval on all five trials
+    # it appeared in. "Preferred that candidate" and "pressed the second
+    # button" then predict identical data, which is the same shape of confound
+    # as the level problem and just as capable of producing a clean-looking
+    # result.
+    #
+    # The shuffle was not broken - measured 0.501 over 4000 seeds. Randomness
+    # streaking is not a bug, which is exactly why the design must not depend
+    # on it not streaking. Blocks of two bound the imbalance to one trial.
+    order = counterbalanced_order()
     dur_a = cands[a].get("duration_s", 0.0)
     dur_b = cands[b].get("duration_s", 0.0)
     trial = {

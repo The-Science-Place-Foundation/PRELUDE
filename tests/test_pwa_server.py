@@ -387,3 +387,59 @@ class TestBalanceIsAppliedOnce:
         measured, baked = 6.0, 6.0
         assert measured - baked == 0.0
         assert 6.0 - (srv._load_pool().get("balance_db") or 0.0) == 6.0
+
+
+class TestPresentationOrderIsCounterbalanced:
+    """Independent per-trial draws streaked far enough to confound a real result.
+
+    In the session of 2026-07-29 the per-trial shuffle came up [1,0] six times
+    running. Because the information-gain selector puts the leading candidate
+    first in most pairs, that placed the favoured candidate in the second
+    interval on all five trials it appeared in - so "preferred that candidate"
+    and "pressed the second button" predicted identical data.
+
+    The shuffle was not broken; measured 0.501 over 4000 seeds. Randomness
+    streaks, which is exactly why the design must not rely on it not to.
+    """
+
+    def test_order_is_balanced_within_every_block_of_two(self, srv):
+        sess = srv._new_session()
+        seen = []
+        for n in range(12):
+            sess["responses"] = [None] * n
+            t = srv._next_trial(sess)
+            seen.append(tuple(t["presentation_order"]))
+            sess["trials"] = []
+        for b in range(6):
+            pair = seen[2 * b:2 * b + 2]
+            assert set(pair) == {(0, 1), (1, 0)}, (
+                f"block {b} was {pair}; each block must contain one of each")
+
+    def test_no_streak_can_exceed_one_trial(self, srv):
+        """The specific failure: five consecutive trials with the same order."""
+        for k in range(200):
+            sess = srv._new_session()
+            sess["session_id"] = f"streaktest{k}"
+            orders = []
+            for n in range(10):
+                sess["responses"] = [None] * n
+                sess["trials"] = []
+                orders.append(tuple(srv._next_trial(sess)["presentation_order"]))
+            run = best = 1
+            for i in range(1, len(orders)):
+                run = run + 1 if orders[i] == orders[i - 1] else 1
+                best = max(best, run)
+            assert best <= 2, f"session {k} streaked {best} trials: {orders}"
+
+    def test_control_trials_are_counterbalanced_too(self, srv):
+        """The control is the one place a slot bias would be read as a level effect."""
+        sess = srv._new_session()
+        quiet_slots = []
+        for n in range(srv.CONTROL_TRIALS):
+            sess["responses"] = [None] * n
+            sess["trials"] = []
+            t = srv._next_trial(sess)
+            assert t["is_control"]
+            quiet_slots.append(0 if t["quiet_first"] else 1)
+        assert len(set(quiet_slots)) > 1, (
+            "the quieter interval must not always land in the same slot")
