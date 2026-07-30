@@ -76,46 +76,82 @@ def candidate_configs() -> list[tuple[str, SimulatorConfig]]:
     base = dict(low_freq=300.0, high_freq=8500.0, seed=0)
     out: list[tuple[str, SimulatorConfig]] = []
 
-    # ANCHOR: the listener's actual implant. 21 intracochlear electrodes with
-    # 1-3 permanently lost to surgical repair, so roughly 19 remain usable.
-    # ACE peak picking, 900 pps.
+    # ANCHOR: the listener's actual implant, from the medical records.
+    # 22 intracochlear contacts, one dead, so 21 working. ACE peak picking,
+    # 900 pps.
     #
-    # The archived 2004-era simulator sessions independently used n_chan_ci=21,
-    # which is corroboration rather than coincidence: that tuning was done with
-    # this listener. A 22-channel default was a platform assumption and is
-    # wrong for this device.
+    # This supersedes an earlier "21 implanted, 1-3 lost, ~19 usable", which
+    # was a recollection rather than the file. She has MORE channels than was
+    # modelled, and the old 19-channel anchor sits 0.315 from this one -
+    # comparable to the median distance across the whole pool, so it was not
+    # a small error.
     #
-    # NOTE: 19 usable of 21 is modelled here as 19 evenly spaced channels. A
-    # real deactivation leaves GAPS in the tonotopic map - the allocation is
-    # redistributed across survivors, but the electrode positions still have
-    # holes, so spacing is uneven. Modelling that needs per-electrode
-    # deactivation in SimulatorConfig, which does not exist yet.
-    anchor = dict(n_channels=19, n_selected=8, carrier="noise",
+    # The dead contact is modelled as a place mismatch rather than a channel
+    # count: the processor reallocates the frequency range across the 21 live
+    # contacts, but cannot move them, so a band is delivered roughly two
+    # semitones from where its frequency belongs. See SimulatorConfig.
+    array = dict(n_electrodes=22, electrode_numbering="basal_first")
+    anchor = dict(n_channels=21, n_selected=8, carrier="noise",
                   envelope_cutoff_hz=300.0, interaction_decay_db=8.0,
-                  stimulation_rate_hz=900.0, **base)
+                  stimulation_rate_hz=900.0, deactivated_electrodes=(2,),
+                  **array, **base)
     out.append(("anchor", SimulatorConfig(**anchor)))
+
+    # WHICH contact is dead is unresolved: the file numbers it "#2" but calls
+    # it the second most distal, and on a Cochlear array the distal end is the
+    # apex, whose second contact is 21. The two readings are 17x apart in
+    # frequency - about 6457-7410 Hz against 364-438 Hz.
+    #
+    # Rather than guess, ask. The two simulations are 0.329 apart, well clear
+    # of the 0.05 floor below which this procedure cannot separate anything,
+    # so the listener's judgements can settle it. That is what the fit is for.
+    out.append(("dead_apical", SimulatorConfig(**{**anchor, "deactivated_electrodes": (21,)})))
+    # And whether modelling the dead contact matters at all: same 21 channels,
+    # evenly spaced, no place mismatch. 0.153 from the anchor, so separable.
+    out.append(("dead_ignored", SimulatorConfig(**{
+        k: v for k, v in anchor.items()
+        if k not in ("deactivated_electrodes", "n_electrodes", "electrode_numbering")})))
+    # The array as implanted, before the contact failed.
+    out.append(("intact22", SimulatorConfig(**{
+        **{k: v for k, v in anchor.items()
+           if k not in ("deactivated_electrodes", "n_electrodes", "electrode_numbering")},
+        "n_channels": 22})))
 
     # Fine variation around the anchor: one parameter moved at a time, so a
     # preference points at a parameter rather than at an unattributable blend.
+    #
+    # Deliberately fewer than before. Simulated against the previous pool,
+    # whether the true candidate is recovered was predicted almost entirely by
+    # its nearest-neighbour distance - 5-6 runs in 6 when the nearest was 0.19
+    # or further, 0-3 within 0.07 - and rate500/rate1800/spread4/spread16/
+    # env900 all sat within 0.05 of the anchor. Those trials cost a minute
+    # each and could not have returned anything.
+    #
+    # This is NOT the earlier mistake of pruning on a metric's say-so. That
+    # metric was demonstrably blind: it smoothed at 50 Hz while being asked
+    # about envelope bandwidths up to 900 Hz. This one analyses at 50/200/800
+    # Hz, and its verdict has been checked against actual recovery rates in
+    # simulation rather than assumed. The dropped configurations are recorded
+    # here so the decision is reversible:
+    #
+    #   rate500 (0.065), rate1800 (0.037), spread4 (0.034), spread16 (0.033),
+    #   env900 (0.021)  - all distances to the old anchor.
+    #
+    # If she can hear a difference these do not capture, the metric is wrong
+    # and they come back. Her judgements decide that, not the matrix.
     for n_sel in (6, 10, 12):
         out.append((f"maxima{n_sel}", SimulatorConfig(**{**anchor, "n_selected": n_sel})))
-    for rate in (500.0, 1800.0):
-        out.append((f"rate{int(rate)}", SimulatorConfig(**{**anchor, "stimulation_rate_hz": rate})))
-    for db in (4.0, 16.0):
-        out.append((f"spread{int(db)}", SimulatorConfig(**{**anchor, "interaction_decay_db": db})))
-    for cut in (80.0, 900.0):
-        out.append((f"env{int(cut)}", SimulatorConfig(**{**anchor, "envelope_cutoff_hz": cut})))
+    out.append(("env80", SimulatorConfig(**{**anchor, "envelope_cutoff_hz": 80.0})))
     for carrier in ("pulse", "tone"):
         out.append((f"carrier_{carrier}", SimulatorConfig(**{**anchor, "carrier": carrier})))
 
     # A few distant options kept deliberately, so the fit can still be pulled
     # away if the anchor turns out to be wrong. Without these the pool could
     # only ever confirm its own starting point.
+    plain = {k: v for k, v in anchor.items()
+             if k not in ("deactivated_electrodes", "n_electrodes", "electrode_numbering")}
     for n in (6, 8, 12, 16):
-        out.append((f"ch{n:02d}", SimulatorConfig(**{**anchor, "n_channels": n, "n_selected": n})))
-    # Bracket the uncertainty in how many electrodes actually survived.
-    for n in (18, 21):
-        out.append((f"active{n}", SimulatorConfig(**{**anchor, "n_channels": n})))
+        out.append((f"ch{n:02d}", SimulatorConfig(**{**plain, "n_channels": n, "n_selected": n})))
 
     # Retained because the listener has already been asked about them.
     # Dropping a configuration that appears in a recorded judgement orphans
@@ -125,6 +161,11 @@ def candidate_configs() -> list[tuple[str, SimulatorConfig]]:
     out.append(("maxima4", SimulatorConfig(**{**anchor, "n_selected": 4})))
     out.append(("carrier_pulse_loose",
                 SimulatorConfig(**{**anchor, "carrier": "pulse", "synchronization": 0.5})))
+
+    names = [n for n, _ in out]
+    if len(names) != len(set(names)):
+        dupes = sorted({n for n in names if names.count(n) > 1})
+        raise ValueError(f"duplicate candidate name(s) {dupes}; names index judgements")
 
     return out
 
@@ -185,9 +226,15 @@ def _config_id(cfg: SimulatorConfig) -> str:
     This deliberately covers the *simulation* only. It is not sufficient to
     identify the audio - see :func:`_render_id`.
     """
+    # Every parameter that varies between candidates has to appear here. Three
+    # candidates in this pool differ ONLY in which contact is dead - anchor,
+    # dead_apical and dead_ignored are all 21 channels otherwise - so omitting
+    # the deactivation fields would give three different sounds one identity,
+    # and through it one filename and one entry in the record.
     keys = ("n_channels", "n_selected", "carrier", "stimulation_rate_hz",
             "envelope_cutoff_hz", "interaction_decay_db", "synchronization",
-            "low_freq", "high_freq", "spacing")
+            "low_freq", "high_freq", "spacing",
+            "n_electrodes", "deactivated_electrodes", "electrode_numbering")
     g = vars(cfg)
     blob = json.dumps({k: g.get(k) for k in keys}, sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()[:10]
