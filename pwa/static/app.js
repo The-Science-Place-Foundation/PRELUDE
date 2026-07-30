@@ -655,11 +655,14 @@ function mapDetectShow() {
   /* The answer buttons stay locked until this one has been heard — answering
      before playing would record a verdict about nothing. Say so, because
      otherwise the locked buttons read as the app being broken. */
-  $('mdPlay').textContent = MAP.detectIx ? 'Play the next one' : 'Play it';
-  $('mdHint').textContent = 'Play it first, then say what you heard.';
+  $('mdPlay').textContent = 'Play again';
+  $('mdHint').textContent = 'Listening…';
   $('mdClear').disabled = $('mdFaint').disabled = $('mdNone').disabled = true;
-  $('mdSkip').disabled = false;
+  $('mdSkip').disabled = true;
   show('mapdetect');
+  /* Plays itself, for the same reason as the pitch match: a screen whose only
+     live control is "Skip this one" invites skipping. */
+  setTimeout(() => { $('mdPlay').click(); }, 500);
 }
 
 $('mdPlay').addEventListener('click', async () => {
@@ -745,16 +748,20 @@ function mapMatchNext() {
   $('mmPlay').textContent = 'Play both';
   mapMatchButtons(true);
   show('mapmatch');
+  mapAdvance();
 }
 
 function mapMatchButtons(disabled) {
   $('mmFirst').disabled = $('mmSecond').disabled = $('mmUnsure').disabled = disabled;
 }
 
-$('mmPlay').addEventListener('click', async () => {
+/* Shared by the auto-advance and the manual button, so there is exactly one
+   playback path to reason about. */
+async function mapPlayPair() {
   if (MAP.playing) return;
   MAP.playing = true;
   $('mmPlay').disabled = true;
+  $('mmSkip').disabled = true;      /* cannot be the only live control */
   const st = MAP.st;
   const probe = MAP.manifest.probe[st.i];
   try {
@@ -768,11 +775,10 @@ $('mmPlay').addEventListener('click', async () => {
     const h2 = await playBuffer(b);
     earsOff('mmL', 'mmR');
     if (h1 === 'silent' || h2 === 'silent') {
-      /* Half a pair is not a comparison. */
       $('mmHint').textContent = 'One of those did not play. Tap play again.';
       $('mmPlay').textContent = 'Play both again';
     } else {
-      $('mmHint').textContent = '';
+      $('mmHint').textContent = 'Which sat higher?';
       mapMatchButtons(false);
       $('mmPlay').textContent = 'Play again';
     }
@@ -783,7 +789,14 @@ $('mmPlay').addEventListener('click', async () => {
     $('mmPlay').disabled = false;
     $('mmSkip').disabled = false;
   }
-});
+}
+
+function mapAdvance() {
+  $('mmHint').textContent = 'Listening…';
+  setTimeout(() => { mapPlayPair(); }, 500);
+}
+
+$('mmPlay').addEventListener('click', () => mapPlayPair());
 
 /* `higher` is which interval sounded higher: 'first' = the implant, 'second'
    = the probe. If the probe sounded higher the ladder steps down, and the
@@ -800,8 +813,7 @@ function mapMatchAnswer(higher) {
        which is itself a finding. */
     if (st.trials >= MAP_MAX_TRIALS) { mapMatchDone(); return; }
     mapMatchButtons(true);
-    $('mmHint').textContent = 'Play the next pair, then answer.';
-    $('mmPlay').textContent = 'Play both';
+    mapAdvance();
     return;
   }
 
@@ -825,8 +837,19 @@ function mapMatchAnswer(higher) {
     return;
   }
   mapMatchButtons(true);
-  $('mmHint').textContent = 'Play the next pair, then answer.';
-  $('mmPlay').textContent = 'Play both';
+  /* Play the next pair automatically rather than waiting for a tap.
+
+     Requiring a tap between trials produced a screen where every answer
+     button was disabled and the only live control was "Skip this pair" — so
+     the natural next action ended the staircase. Two of three references in a
+     test run died after a single trial exactly that way, and it was reported
+     twice as the app refusing to advance.
+
+     Safe to start here: the context was unlocked by an earlier gesture and is
+     already running, and autoplay restrictions apply to resuming a context
+     rather than to starting a source on a running one. If it fails anyway,
+     playBuffer times out and reports it instead of hanging. */
+  mapAdvance();
 }
 
 $('mmSkip').addEventListener('click', () => {
