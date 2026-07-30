@@ -37,7 +37,7 @@ const S = {
   sessionId: null, trial: null, maxTrials: 40,
   shownAt: 0, playing: false, buffers: new Map(), ctx: null,
   answered: 0, sameCount: 0, heard: false,
-  balanceDb: 0, residualDb: 0, calibrated: false,
+  balanceDb: 0, residualDb: 0, calibrated: false, channelsSeparate: false,
   bal: null,
 };
 
@@ -448,6 +448,7 @@ $('retryBtn').addEventListener('click', () => location.reload());
       S.residualDb = S.balanceDb - S.poolBalanceDb;
       S.calibrated = true;
     }
+    S.channelsSeparate = !!(cal && cal.channels_separate);
     const sessions = h.sessions_on_disk;
 
     if (!S.calibrated) {
@@ -475,6 +476,303 @@ $('retryBtn').addEventListener('click', () => location.reload());
     show('trouble');
   }
 })();
+
+
+/* ------------------------------------------------------ mapping session */
+
+/* Measuring the implant ourselves, because the clinic cannot be asked and no
+   audiogram exists.
+
+   Part 1 asks which narrowband bursts reach the aided ear AT THE LEVEL THE
+   STUDY PRESENTS. That is a different question from a sound-booth audiogram
+   and a more useful one: it measures the path every simulation travels —
+   this ear, through this hearing aid, over this stream, at this volume.
+
+   Part 2 is an interaural pitch match. A burst goes to the implant ear and a
+   probe to the aided ear, and a staircase on the probe converges on the
+   frequency the implant percept sits at. Note that no simulation is involved:
+   the listener's own device does its own allocation, which is exactly what
+   makes this a measurement of the real implant rather than of our model.
+
+   Both parts are saved incrementally. Either one alone is useful, and a
+   session that stops halfway still contributes. */
+
+const MAP = {
+  manifest: null,
+  detectIx: 0, detect: [],
+  matchIx: 0, match: [],
+  st: null,            /* current staircase */
+  playing: false,
+};
+
+/* Eighth-octave ladder steps: one octave, half, quarter, eighth.
+
+   Simulated against synthetic listeners before deployment, which is the only
+   reason the two settings below are what they are. The obvious choices were
+   both wrong:
+
+   - A quarter-octave ladder has a 3-semitone floor, enough to blur the very
+     mismatch this exists to size.
+   - Advancing the step every SECOND reversal and averaging the last four
+     never reached the finest step at all, so early coarse reversals dominated
+     the estimate. That left a 4.5-semitone dependence on which side the
+     staircase started from — the answer was partly just the starting point.
+
+   Advancing on every reversal and averaging only the reversals taken at the
+   finest step costs about two extra trials and cuts the start-side dependence
+   to 0.8 st and the median error to 0.5 st. */
+const MAP_STEPS = [8, 4, 2, 1];
+const MAP_TARGET_REVERSALS = 6;
+const MAP_MAX_TRIALS = 18;
+
+function mapNearestProbe(hz) {
+  const p = MAP.manifest.probe;
+  let best = 0, bestd = Infinity;
+  for (let i = 0; i < p.length; i++) {
+    const d = Math.abs(Math.log2(p[i].center_hz / hz));
+    if (d < bestd) { bestd = d; best = i; }
+  }
+  return best;
+}
+
+async function startMapping() {
+  audioCtx();
+  /* Every mapping stimulus is deliberately in ONE channel, so a path that
+     collapses to mono makes the whole measurement meaningless while still
+     sounding entirely plausible — the detection screen would report bands as
+     audible that reached the wrong ear, and the pitch match would compare a
+     percept against itself. The channel check is the only thing standing
+     between that and a wasted evening, so it is a gate rather than advice. */
+  if (!S.channelsSeparate) {
+    $('troubleTitle').textContent = 'The ears need checking first.';
+    $('troubleNote').textContent =
+      'These sounds go to one ear at a time, so they only mean something if ' +
+      'the two sides are genuinely separate. That check takes a few seconds.';
+    show('trouble');
+    return;
+  }
+  try {
+    const m = await api('/api/mapping');
+    MAP.manifest = m.mapping;
+    if (!MAP.manifest || !MAP.manifest.detect.length) {
+      $('troubleTitle').textContent = 'The mapping stimuli are not installed.';
+      $('troubleNote').textContent =
+        'Run scripts/make_mapping_session.py into the audio directory.';
+      show('trouble');
+      return;
+    }
+  } catch {
+    show('trouble');
+    return;
+  }
+  MAP.detectIx = 0; MAP.detect = [];
+  MAP.matchIx = 0; MAP.match = [];
+  show('mapintro');
+}
+
+/* ---- part 1: detection ---- */
+
+function mapDetectShow() {
+  const d = MAP.manifest.detect;
+  if (MAP.detectIx >= d.length) { mapMatchBegin(); return; }
+  $('mdCount').textContent = `Whisper ${MAP.detectIx + 1} of ${d.length}`;
+  $('mdPlay').textContent = 'Play it';
+  $('mdClear').disabled = $('mdFaint').disabled = $('mdNone').disabled = true;
+  show('mapdetect');
+}
+
+$('mdPlay').addEventListener('click', async () => {
+  if (MAP.playing) return;
+  MAP.playing = true;
+  $('mdPlay').disabled = true;
+  const rec = MAP.manifest.detect[MAP.detectIx];
+  try {
+    const buf = await loadBuffer(rec.file);
+    const acousticIsLeft = IMPLANT_EAR !== 'left';
+    $(acousticIsLeft ? 'mdL' : 'mdR').classList.add('on');
+    await playBuffer(buf);          /* no balance offset: one ear, by design */
+    earsOff('mdL', 'mdR');
+    $('mdClear').disabled = $('mdFaint').disabled = $('mdNone').disabled = false;
+    $('mdPlay').textContent = 'Play again';
+  } catch {
+    show('trouble');
+  } finally {
+    MAP.playing = false;
+    $('mdPlay').disabled = false;
+  }
+});
+
+function mapDetectAnswer(verdict) {
+  const rec = MAP.manifest.detect[MAP.detectIx];
+  MAP.detect.push({ center_hz: rec.center_hz, file: rec.file, heard: verdict });
+  MAP.detectIx += 1;
+  mapSave();                        /* durable now, not at the end */
+  mapDetectShow();
+}
+$('mdClear').addEventListener('click', () => mapDetectAnswer('clear'));
+$('mdFaint').addEventListener('click', () => mapDetectAnswer('faint'));
+$('mdNone').addEventListener('click', () => mapDetectAnswer('none'));
+
+/* ---- part 2: interaural pitch match ---- */
+
+function mapMatchBegin() {
+  MAP.matchIx = 0;
+  mapMatchNext();
+}
+
+function mapMatchNext() {
+  const refs = MAP.manifest.match;
+  if (MAP.matchIx >= refs.length) { mapFinish(); return; }
+  const ref = refs[MAP.matchIx];
+  /* Start a full octave away, alternating side between references so the
+     first probe is not always below — a fixed starting side anchors the
+     answer toward it. */
+  const from_below = MAP.matchIx % 2 === 0;
+  const start = Math.max(0, Math.min(MAP.manifest.probe.length - 1,
+    mapNearestProbe(ref.center_hz) + (from_below ? -MAP_STEPS[0] : MAP_STEPS[0])));
+  MAP.st = {
+    ref, i: start, stepIx: 0, dir: null,
+    reversals: [], trials: 0, from_below, responses: [],
+  };
+  $('mmCount').textContent = `Pair ${MAP.matchIx + 1} of ${refs.length}`;
+  $('mmPlay').textContent = 'Play both';
+  mapMatchButtons(true);
+  show('mapmatch');
+}
+
+function mapMatchButtons(disabled) {
+  $('mmFirst').disabled = $('mmSecond').disabled = $('mmUnsure').disabled = disabled;
+}
+
+$('mmPlay').addEventListener('click', async () => {
+  if (MAP.playing) return;
+  MAP.playing = true;
+  $('mmPlay').disabled = true;
+  const st = MAP.st;
+  const probe = MAP.manifest.probe[st.i];
+  try {
+    const [a, b] = await Promise.all([loadBuffer(st.ref.file), loadBuffer(probe.file)]);
+    const implantIsRight = IMPLANT_EAR === 'right';
+    $(implantIsRight ? 'mmR' : 'mmL').classList.add('on');
+    await playBuffer(a);
+    earsOff('mmL', 'mmR');
+    await new Promise(r => setTimeout(r, 420));
+    $(implantIsRight ? 'mmL' : 'mmR').classList.add('on');
+    await playBuffer(b);
+    earsOff('mmL', 'mmR');
+    mapMatchButtons(false);
+    $('mmPlay').textContent = 'Play again';
+  } catch {
+    show('trouble');
+  } finally {
+    MAP.playing = false;
+    $('mmPlay').disabled = false;
+  }
+});
+
+/* `higher` is which interval sounded higher: 'first' = the implant, 'second'
+   = the probe. If the probe sounded higher the ladder steps down, and the
+   other way round. */
+function mapMatchAnswer(higher) {
+  const st = MAP.st;
+  const probe = MAP.manifest.probe[st.i];
+  st.trials += 1;
+  st.responses.push({ probe_hz: probe.center_hz, higher });
+
+  if (higher === 'unsure') {
+    /* Not a direction, so it cannot move the ladder. Recorded because a run
+       of them means the two percepts are not comparable at this frequency,
+       which is itself a finding. */
+    if (st.trials >= MAP_MAX_TRIALS) { mapMatchDone(); return; }
+    mapMatchButtons(true);
+    $('mmPlay').textContent = 'Play both';
+    return;
+  }
+
+  const probeHigher = higher === 'second';
+  const newDir = probeHigher ? 'down' : 'up';
+  if (st.dir !== null && newDir !== st.dir) {
+    /* Step size is recorded with the reversal, because only the reversals
+       taken at the finest step carry the resolution this method claims. */
+    st.reversals.push({ hz: probe.center_hz, stepIx: st.stepIx });
+    if (st.stepIx < MAP_STEPS.length - 1) st.stepIx += 1;
+  }
+  st.dir = newDir;
+  st.i += probeHigher ? -MAP_STEPS[st.stepIx] : MAP_STEPS[st.stepIx];
+  const last = MAP.manifest.probe.length - 1;
+  const pinned = st.i < 0 || st.i > last;
+  st.i = Math.max(0, Math.min(last, st.i));
+
+  if (st.reversals.length >= MAP_TARGET_REVERSALS || st.trials >= MAP_MAX_TRIALS
+      || (pinned && st.trials > 6 && st.reversals.length === 0)) {
+    mapMatchDone();
+    return;
+  }
+  mapMatchButtons(true);
+  $('mmPlay').textContent = 'Play both';
+}
+$('mmFirst').addEventListener('click', () => mapMatchAnswer('first'));
+$('mmSecond').addEventListener('click', () => mapMatchAnswer('second'));
+$('mmUnsure').addEventListener('click', () => mapMatchAnswer('unsure'));
+
+function mapMatchDone() {
+  const st = MAP.st;
+  /* Average only the reversals taken at the finest step; fall back to the
+     last four if the staircase never got that far, which is a coarser answer
+     and is flagged as such by `resolved` below.
+
+     Geometric mean, because pitch is logarithmic — averaging in Hz would bias
+     every estimate upward. */
+  const finest = st.reversals.filter(r => r.stepIx === MAP_STEPS.length - 1);
+  const use = (finest.length >= 2 ? finest : st.reversals).slice(-4);
+  const est = use.length
+    ? Math.pow(2, use.reduce((a, r) => a + Math.log2(r.hz), 0) / use.length)
+    : null;
+  MAP.match.push({
+    ci_hz: st.ref.center_hz,
+    file: st.ref.file,
+    match_hz: est === null ? null : Math.round(est * 10) / 10,
+    shift_semitones: est === null ? null
+      : Math.round(1200 * Math.log2(est / st.ref.center_hz)) / 100,
+    reversals: st.reversals,
+    n_trials: st.trials,
+    started_below: st.from_below,
+    /* Resolved means it reached the finest step and reversed there at least
+       twice. Anything less is a coarse estimate and must not be read as a
+       measurement at this method's stated resolution. */
+    resolved: est !== null && finest.length >= 2,
+    at_finest_step: finest.length,
+    responses: st.responses,
+  });
+  MAP.matchIx += 1;
+  mapSave();                        /* each reference saved as it completes */
+  mapMatchNext();
+}
+
+async function mapSave() {
+  try {
+    await api('/api/mapping', {
+      detect: MAP.detect,
+      match: MAP.match,
+      complete: MAP.detectIx >= MAP.manifest.detect.length
+                && MAP.matchIx >= MAP.manifest.match.length,
+    });
+  } catch { /* a failed write must never interrupt a listener */ }
+}
+
+function mapFinish() {
+  mapSave();
+  const heard = MAP.detect.filter(d => d.heard !== 'none').length;
+  const resolved = MAP.match.filter(m => m.resolved).length;
+  $('doneNote').textContent =
+    `${heard} of ${MAP.detect.length} whispers reached the aided ear` +
+    (resolved ? `, and ${resolved} pitch match${resolved === 1 ? '' : 'es'} settled.` : '.');
+  show('done');
+}
+
+$('mapBtn').addEventListener('click', startMapping);
+$('mapGo').addEventListener('click', () => mapDetectShow());
+$('mapBack').addEventListener('click', () => begin());
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('/sw.js').catch(() => {});

@@ -23,8 +23,67 @@
     <p class="quiet" id="moonNote">Loading&hellip;</p>
     <div class="rule"></div>
     <button class="brass" id="beginBtn">Sit for a while</button>
+    <button class="plain" id="mapBtn">Map the ear instead</button>
     <button class="plain" id="tuneBtn">Tune the balance first</button>
     <p class="foot"><span id="lenNote">Ten minutes</span> &middot; Stop anytime</p>
+  </section>
+
+  <!-- Mapping: what this is, and a way out -->
+  <section class="view hidden" id="v-mapintro" data-view="mapintro">
+    <div class="glyph" aria-hidden="true">&#9835;</div>
+    <h1 class="display sm">A different kind of listening.</h1>
+    <p class="quiet narrow">Short whispers of sound, one ear at a time. First to
+      find which ones reach the aided ear at all, then to find where the
+      implant places them.</p>
+    <p class="quiet narrow">Nothing to compare and nothing to prefer &mdash; only
+      whether you heard it, and which sounded higher. Wear both devices.</p>
+    <div class="rule"></div>
+    <div class="row">
+      <button class="brass sm" id="mapGo">Begin</button>
+      <button class="plain sm" id="mapBack">Do the usual instead</button>
+    </div>
+    <p class="foot">Two parts &middot; either one alone is useful &middot; stop anytime</p>
+  </section>
+
+  <!-- Mapping part 1: does this band arrive at all -->
+  <section class="view hidden" id="v-mapdetect" data-view="mapdetect">
+    <p class="quiet" id="mdCount">&nbsp;</p>
+    <h1 class="display sm">Did that arrive?</h1>
+    <p class="quiet narrow">Two short whispers in the aided ear only. The other
+      ear hears nothing &mdash; that is deliberate.</p>
+    <button class="brass" id="mdPlay">Play it</button>
+    <div class="ears" aria-hidden="true">
+      <span><i class="dot" id="mdL"></i>Left</span>
+      <span><i class="dot" id="mdR"></i>Right</span>
+    </div>
+    <div class="rule"></div>
+    <div class="row">
+      <button class="brass sm" id="mdClear" disabled>Clear</button>
+      <button class="brass sm" id="mdFaint" disabled>Faint</button>
+      <button class="brass sm" id="mdNone" disabled>Nothing</button>
+    </div>
+    <p class="foot">Guessing is worse than &ldquo;nothing&rdquo; &middot; stop anytime</p>
+  </section>
+
+  <!-- Mapping part 2: which sounded higher -->
+  <section class="view hidden" id="v-mapmatch" data-view="mapmatch">
+    <p class="quiet" id="mmCount">&nbsp;</p>
+    <h1 class="display sm">Which sounded higher?</h1>
+    <p class="quiet narrow">The first goes to the implant, the second to the
+      aided ear. They will not sound alike &mdash; ignore that, and judge only
+      which sat <em>higher</em>.</p>
+    <button class="brass" id="mmPlay">Play both</button>
+    <div class="ears" aria-hidden="true">
+      <span><i class="dot" id="mmL"></i>Left</span>
+      <span><i class="dot" id="mmR"></i>Right</span>
+    </div>
+    <div class="rule"></div>
+    <div class="row">
+      <button class="brass sm" id="mmFirst" disabled>The first</button>
+      <button class="brass sm" id="mmSecond" disabled>The second</button>
+    </div>
+    <button class="plain sm" id="mmUnsure" disabled>Too different to tell</button>
+    <p class="foot">Stop anytime &middot; what is done so far is kept</p>
   </section>
 
   <!-- Channel check -->

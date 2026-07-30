@@ -140,6 +140,37 @@ def _read_calibration() -> dict | None:
     return None
 
 
+#: Where the self-measured map lives. Separate from calibration.json because
+#: it answers a different question and is collected in a different session, and
+#: because a partial map is worth keeping on its own.
+MAPPING_FILE = lambda: SESSION_DIR / "mapping.json"  # noqa: E731
+
+
+def _load_mapping_manifest() -> dict | None:
+    """The mapping stimuli that were rendered, if any.
+
+    Written by scripts/make_mapping_session.py alongside the pool. Absent
+    means the app should say so rather than offering a test it cannot run.
+    """
+    f = AUDIO_DIR / "mapping.json"
+    if f.is_file():
+        try:
+            return json.loads(f.read_text())
+        except (OSError, json.JSONDecodeError):
+            return None
+    return None
+
+
+def _read_mapping_result() -> dict | None:
+    f = MAPPING_FILE()
+    if f.is_file():
+        try:
+            return json.loads(f.read_text())
+        except (OSError, json.JSONDecodeError):
+            return None
+    return None
+
+
 def _load_pool() -> dict | None:
     """Candidate pool and its pairwise distance matrix, rendered offline.
 
@@ -686,6 +717,13 @@ class Handler(BaseHTTPRequestHandler):
             })
             return
 
+        if route == "/api/mapping":
+            self._json(200, {
+                "mapping": _load_mapping_manifest(),
+                "result": _read_mapping_result(),
+            })
+            return
+
         if route == "/api/calibration":
             # ``pool_balance_db`` is how much of the measured balance is
             # already baked into the rendered stimuli. The app applies the
@@ -805,6 +843,55 @@ class Handler(BaseHTTPRequestHandler):
             sess["responses"].append(rec)
             _persist(sess)   # durable immediately, not only on finish
             self._json(200, {"trial": _next_trial(sess)})
+            return
+
+        if route == "/api/mapping":
+            # The self-measured map: which bands reach the acoustic ear at the
+            # presentation level, and where the implant places a given
+            # frequency. Written on every answer rather than at the end - a
+            # partial map is useful, and holding it in memory until a "finish"
+            # that may never come already lost one session outright.
+            detect = payload.get("detect") or []
+            match = payload.get("match") or []
+            record = {
+                "detect": detect,
+                "match": match,
+                "complete": bool(payload.get("complete")),
+                "measured_at": _now(),
+                # Stamped so a map cannot be silently read against stimuli it
+                # was not collected with - the same reasoning as pool_id.
+                "stimulus_set": (_load_mapping_manifest() or {}).get("target_lufs"),
+            }
+            # Derived here rather than in the browser, so the summary lives
+            # with the data instead of on a phone.
+            resolved = [m for m in match
+                        if isinstance(m, dict) and m.get("resolved")
+                        and isinstance(m.get("shift_semitones"), (int, float))]
+            if resolved:
+                shifts = sorted(m["shift_semitones"] for m in resolved)
+                mid = shifts[len(shifts) // 2]
+                record["median_shift_semitones"] = round(mid, 2)
+                record["shift_direction"] = (
+                    "upward - the implant places sound higher than its input "
+                    "frequency, the usual direction for an array that does not "
+                    "reach the apex" if mid > 1.5 else
+                    "downward - unusual; check the ear assignment before "
+                    "believing it" if mid < -1.5 else
+                    "no appreciable shift, within this method's ~2 semitone "
+                    "resolution")
+            audible = [d for d in detect
+                       if isinstance(d, dict) and d.get("heard") != "none"]
+            if detect:
+                record["bands_audible"] = len(audible)
+                record["bands_tested"] = len(detect)
+            try:
+                SESSION_DIR.mkdir(parents=True, exist_ok=True)
+                MAPPING_FILE().write_text(json.dumps(record, indent=2))
+                self._json(200, {"saved": True, "result": record})
+            except OSError as exc:
+                self._json(200, {"saved": False,
+                                 "error": f"could not write: {exc.strerror}",
+                                 "result": record})
             return
 
         if route == "/api/calibration":

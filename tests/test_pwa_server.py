@@ -443,3 +443,145 @@ class TestPresentationOrderIsCounterbalanced:
             quiet_slots.append(0 if t["quiet_first"] else 1)
         assert len(set(quiet_slots)) > 1, (
             "the quieter interval must not always land in the same slot")
+
+
+class TestSelfMeasuredMapping:
+    """The map we collect ourselves, because the clinic cannot be asked.
+
+    Two measurements: which narrowband bursts reach the acoustic ear at the
+    level the study presents, and where the implant places a given frequency.
+    Neither involves the simulator - part two sends plain audio to the implant
+    ear so the listener's own device does its own allocation, which is what
+    makes it a measurement of the device rather than of our model.
+    """
+
+    def _manifest(self, srv, target_lufs=-26.6):
+        (srv.AUDIO_DIR / "mapping.json").write_text(json.dumps({
+            "sample_rate": 20000, "implant_ear": "right", "acoustic_ear": "left",
+            "target_lufs": target_lufs, "burst_ms": 400,
+            "detect": [{"file": f"map_detect_{f}.wav", "center_hz": float(f)}
+                       for f in (250, 1000, 4000)],
+            "match": [{"file": f"map_ci_{f}.wav", "center_hz": float(f)}
+                      for f in (500, 1500, 3000)],
+            "probe": [{"file": f"map_probe_{f}.wav", "center_hz": float(f)}
+                      for f in (125, 250, 500, 1000, 2000, 4000, 8000)],
+        }))
+        return srv._load_mapping_manifest()
+
+    def test_absent_stimuli_are_reported_rather_than_faked(self, srv):
+        """Offering a test the stimuli cannot support wastes a listener's evening."""
+        assert srv._load_mapping_manifest() is None
+
+    def test_manifest_loads_when_present(self, srv):
+        m = self._manifest(srv)
+        assert len(m["detect"]) == 3 and len(m["probe"]) == 7
+
+    def test_a_partial_map_is_kept(self, srv):
+        """Sessions stop early by design; half a map is still a map."""
+        self._manifest(srv)
+        srv.MAPPING_FILE().write_text(json.dumps({
+            "detect": [{"center_hz": 250.0, "heard": "clear"}],
+            "match": [], "complete": False,
+        }))
+        r = srv._read_mapping_result()
+        assert r["complete"] is False and len(r["detect"]) == 1
+
+    def test_a_corrupt_map_file_does_not_raise(self, srv):
+        srv.MAPPING_FILE().write_text("{not json")
+        assert srv._read_mapping_result() is None
+
+
+class TestPitchMatchStaircase:
+    """Ported from the simulation that validated it before deployment.
+
+    Both calibration procedures on this project shipped broken in ways a few
+    minutes of simulation would have caught. This one was simulated against
+    synthetic listeners first: median error 1.5-3.0 semitones over 200 runs per
+    condition, ~8-10 trials, resolving shifts up to an octave.
+
+    A quarter-octave ladder was tried first and rejected - it has a
+    3-semitone floor, which would blur the very mismatch the test exists to
+    size. The top reference was moved from 4 kHz to 3 kHz because at 4 kHz a
+    12-semitone upward shift pinned the ladder against its ceiling in 198 of
+    200 runs.
+    """
+
+    LADDER = [125.0 * (2 ** (k / 8)) for k in range(49)]
+    STEPS = [8, 4, 2, 1]
+    TARGET_REVERSALS = 6
+
+    def _run(self, true_match_hz, jnd_st, start_below, seed):
+        import math
+        import random
+        import statistics
+        rng = random.Random(seed)
+        near = min(range(len(self.LADDER)),
+                   key=lambda i: abs(math.log2(self.LADDER[i] / true_match_hz)))
+        i = max(0, min(len(self.LADDER) - 1,
+                       near + (-self.STEPS[0] if start_below else self.STEPS[0])))
+        step_ix, direction, reversals, trials = 0, None, [], 0
+        while trials < 18 and len(reversals) < self.TARGET_REVERSALS:
+            probe = self.LADDER[i]
+            diff = 12 * math.log2(probe / true_match_hz)
+            p = 1 / (1 + math.exp(-diff / max(0.3, jnd_st / 2)))
+            higher = rng.random() < p
+            trials += 1
+            new_dir = "down" if higher else "up"
+            if direction is not None and new_dir != direction:
+                # Step size travels with the reversal: only reversals at the
+                # finest step carry the claimed resolution.
+                reversals.append((probe, step_ix))
+                if step_ix < len(self.STEPS) - 1:
+                    step_ix += 1
+            direction = new_dir
+            i = max(0, min(len(self.LADDER) - 1,
+                           i + (-self.STEPS[step_ix] if higher else self.STEPS[step_ix])))
+        finest = [hz for hz, sx in reversals if sx == len(self.STEPS) - 1]
+        if len(finest) < 2:
+            return None, trials
+        use = finest[-4:]
+        return 2 ** statistics.fmean(math.log2(hz) for hz in use), trials
+
+    def test_it_recovers_a_known_match_within_its_stated_resolution(self):
+        import math
+        import statistics
+        errs = []
+        for k in range(120):
+            est, _ = self._run(1500.0, 2.0, k % 2 == 0, seed=f"a{k}")
+            if est is not None:
+                errs.append(abs(12 * math.log2(est / 1500.0)))
+        assert len(errs) > 100, "should almost always resolve"
+        assert statistics.median(errs) < 1.5, (
+            f"median error {statistics.median(errs):.1f} st - the docs claim "
+            f"0.5 st median and must not overstate it")
+
+    def test_it_recovers_an_upward_shift_which_is_the_expected_direction(self):
+        """CI arrays do not reach the apex, so matches usually sit high."""
+        import math
+        import statistics
+        true = 1500.0 * (2 ** (6 / 12))
+        ests = [e for e, _ in (self._run(true, 2.0, k % 2 == 0, seed=f"b{k}")
+                               for k in range(120)) if e is not None]
+        assert statistics.median(ests) > 1500.0, "must not collapse toward the input"
+        assert abs(12 * math.log2(statistics.median(ests) / true)) < 3.0
+
+    def test_starting_side_does_not_determine_the_answer(self):
+        """A fixed starting side anchors the estimate toward it."""
+        import statistics
+        below = [e for e, _ in (self._run(1500.0, 2.0, True, seed=f"c{k}")
+                                for k in range(80)) if e is not None]
+        above = [e for e, _ in (self._run(1500.0, 2.0, False, seed=f"d{k}")
+                                for k in range(80)) if e is not None]
+        import math
+        gap = abs(12 * math.log2(statistics.median(below) / statistics.median(above)))
+        # Was 4.5 st when the step advanced every second reversal and the last
+        # four were averaged regardless of step size. That is the defect this
+        # asserts against.
+        assert gap < 1.5, f"starting side shifted the answer by {gap:.1f} st"
+
+    def test_it_stays_within_a_tolerable_number_of_trials(self):
+        """Listening time is the binding constraint on the whole project."""
+        import statistics
+        ns = [n for _, n in (self._run(1500.0, 2.0, k % 2 == 0, seed=f"e{k}")
+                             for k in range(120))]
+        assert statistics.median(ns) <= 13
