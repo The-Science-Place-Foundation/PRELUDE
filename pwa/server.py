@@ -970,7 +970,17 @@ class Handler(BaseHTTPRequestHandler):
                     finest if len(finest) >= 2 else same)
                 m["basis"] = ("equality" if basis is same and same else
                               "reversals" if basis else None)
-                if len(basis) >= 2 and min(basis) > 0:
+                # An equality that was never bracketed from both sides is not
+                # a measurement, however tightly it repeats: it records where
+                # the staircase happened to be sitting, not where the match is.
+                if basis is same and same and not m.get("bracketed", True):
+                    m["spread_semitones"] = None
+                    m["settled"] = False
+                    m["why_not_settled"] = (
+                        "equality reported but never bracketed - no probe below "
+                        "was judged lower, so a match further down could not "
+                        "have been found")
+                elif len(basis) >= 2 and min(basis) > 0:
                     spread = 12 * math.log2(max(basis) / min(basis))
                     m["spread_semitones"] = round(spread, 2)
                     m["settled"] = spread <= RELIABLE_SPREAD_ST

@@ -545,7 +545,7 @@ const MAP = {
   detectIx: 0, detect: [],
   matchIx: 0, match: [],
   st: null,            /* current staircase */
-  playing: false,
+  playing: false, heardAt: 0,
 };
 
 /* Eighth-octave ladder steps: one octave, half, quarter, eighth.
@@ -780,6 +780,7 @@ async function mapPlayPair() {
       $('mmPlay').textContent = 'Play both again';
     } else {
       $('mmHint').textContent = 'Which sat higher?';
+      MAP.heardAt = performance.now();
       mapMatchButtons(false);
       $('mmPlay').textContent = 'Play again';
     }
@@ -806,7 +807,13 @@ function mapMatchAnswer(higher) {
   const st = MAP.st;
   const probe = MAP.manifest.probe[st.i];
   st.trials += 1;
-  st.responses.push({ probe_hz: probe.center_hz, higher });
+  st.responses.push({
+    probe_hz: probe.center_hz, higher,
+    /* Time from the end of playback, matching response_ms in the comparison
+       trials. The whole run above took two minutes for 25 answers, which is
+       possible but close to the floor, and there was no way to check. */
+    response_ms: MAP.heardAt ? Math.round(performance.now() - MAP.heardAt) : null,
+  });
   const last = MAP.manifest.probe.length - 1;
 
   /* "The same" is not a failure to answer — it is THE answer.
@@ -824,13 +831,30 @@ function mapMatchAnswer(higher) {
   if (higher === 'same') {
     st.sameAt.push(probe.center_hz);
     st.stepIx = MAP_STEPS.length - 1;      /* we are close; go to fine steps */
-    if (st.sameAt.length >= 2 || st.trials >= MAP_MAX_TRIALS) {
+
+    /* An equality report is only worth anything once the match has been
+       bracketed from BOTH sides — some probe below it judged lower, and some
+       probe above it judged higher.
+       
+       Without that, an early "same" simply anchors the estimate wherever the
+       staircase happened to be. It did exactly that on a real run: the 1500 Hz
+       reference started high, hit "same" on the first rung near the reference
+       and confirmed only upward, so a true match several semitones BELOW could
+       not have been found. The other two references that run were bracketed
+       properly and agreed with each other; that one disagreed, and it is the
+       one that could not have discovered its own answer. */
+    const below = st.responses.some(r => r.higher === 'first');   /* probe lower */
+    const above = st.responses.some(r => r.higher === 'second');  /* probe higher */
+
+    if (below && above && (st.sameAt.length >= 2 || st.trials >= MAP_MAX_TRIALS)) {
       mapMatchDone();
       return;
     }
-    /* Confirm it from the other side by nudging one fine rung, so a single
-       lucky "same" cannot carry the estimate on its own. */
-    st.i = Math.max(0, Math.min(last, st.i + (st.sameAt.length % 2 ? 1 : -1)));
+    if (st.trials >= MAP_MAX_TRIALS) { mapMatchDone(); return; }
+
+    /* Probe whichever side is still unconfirmed. */
+    const step = !below ? -1 : (!above ? 1 : (st.sameAt.length % 2 ? 1 : -1));
+    st.i = Math.max(0, Math.min(last, st.i + step));
     mapMatchButtons(true);
     mapAdvance();
     return;
@@ -907,6 +931,10 @@ function mapMatchDone() {
        measurement at this method's stated resolution. */
     method,
     same_at: st.sameAt,
+    /* Recorded so a reader can tell a bracketed equality from an anchored one
+       without re-deriving it from the response list. */
+    bracketed: st.responses.some(r => r.higher === 'first')
+            && st.responses.some(r => r.higher === 'second'),
     resolved: est !== null && (st.sameAt.length >= 2 || finest.length >= 2),
     at_finest_step: finest.length,
     responses: st.responses,

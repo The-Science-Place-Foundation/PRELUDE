@@ -732,3 +732,47 @@ class TestPitchMatchReliabilityIsJudgedNotAssumed:
         consistent = [6.0, 7.5, 5.0]
         signs2 = {1 if v > 1.5 else -1 if v < -1.5 else 0 for v in consistent}
         assert len(signs2 - {0}) <= 1
+
+
+class TestEqualityMustBeBracketed:
+    """An early "same" anchors the estimate where the staircase happened to be.
+
+    On a real run the 1500 Hz reference started above the match, reported
+    "same" on the first rung near the reference, and confirmed only upward. A
+    true match several semitones below could not have been discovered. The
+    other two references that run were bracketed from both sides and agreed
+    with each other on a -4 semitone shift; the unbracketed one disagreed, and
+    it was the only one incapable of finding its own answer.
+    """
+
+    def _settled(self, srv, same_at, bracketed):
+        import math
+        if same_at and not bracketed:
+            return False
+        if len(same_at) >= 2:
+            return 12 * math.log2(max(same_at) / min(same_at)) <= srv.RELIABLE_SPREAD_ST
+        return False
+
+    def test_an_unbracketed_equality_is_refused(self, srv):
+        assert self._settled(srv, [1542.2, 1542.2], bracketed=False) is False
+
+    def test_the_same_equality_bracketed_is_accepted(self, srv):
+        assert self._settled(srv, [1542.2, 1542.2], bracketed=True) is True
+
+    def test_bracketing_needs_a_probe_judged_lower_and_one_judged_higher(self):
+        """'first' means the reference was higher, i.e. the probe sat below."""
+        only_above = [{"higher": "second"}, {"higher": "same"}]
+        both = [{"higher": "first"}, {"higher": "second"}, {"higher": "same"}]
+        f = lambda rs: (any(r["higher"] == "first" for r in rs)
+                        and any(r["higher"] == "second" for r in rs))
+        assert f(only_above) is False
+        assert f(both) is True
+
+    def test_the_real_bracketed_reference_from_that_run_still_passes(self, srv):
+        """3000 Hz approached from both sides before its equality report."""
+        responses = [{"higher": "first"}, {"higher": "second"}, {"higher": "first"},
+                     {"higher": "second"}, {"higher": "same"}]
+        bracketed = (any(r["higher"] == "first" for r in responses)
+                     and any(r["higher"] == "second" for r in responses))
+        assert bracketed is True
+        assert self._settled(srv, [2378.4, 2378.4], bracketed) is True
