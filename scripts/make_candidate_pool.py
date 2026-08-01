@@ -90,7 +90,18 @@ def candidate_configs() -> list[tuple[str, SimulatorConfig]]:
     # count: the processor reallocates the frequency range across the 21 live
     # contacts, but cannot move them, so a band is delivered roughly two
     # semitones from where its frequency belongs. See SimulatorConfig.
-    array = dict(n_electrodes=22, electrode_numbering="basal_first")
+    # MEASURED 2026-07-30 by interaural pitch match, standing in for the
+    # frequency allocation table the clinic will not supply. Input frequency to
+    # the implant against the acoustic frequency the percept was matched to.
+    #
+    # This supersedes the modelled electrode displacement for carrier
+    # placement - it came from the real device, so it already contains that
+    # device's allocation, its electrode positions and the dead contact.
+    # deactivated_electrodes below still governs channel count and the n-of-m
+    # competition, which a pitch match says nothing about.
+    place_map = ((500.0, 396.9), (1500.0, 1542.2), (3000.0, 2378.4))
+    array = dict(n_electrodes=22, electrode_numbering="basal_first",
+                 place_map_hz=place_map)
     anchor = dict(n_channels=21, n_selected=8, carrier="noise",
                   envelope_cutoff_hz=300.0, interaction_decay_db=8.0,
                   stimulation_rate_hz=900.0, deactivated_electrodes=(2,),
@@ -148,6 +159,9 @@ def candidate_configs() -> list[tuple[str, SimulatorConfig]]:
     # A few distant options kept deliberately, so the fit can still be pulled
     # away if the anchor turns out to be wrong. Without these the pool could
     # only ever confirm its own starting point.
+    # The distant options drop the dead contact but KEEP the measured map: it
+    # describes where this listener hears things, not which device is being
+    # hypothesised, so removing it would vary two things at once.
     plain = {k: v for k, v in anchor.items()
              if k not in ("deactivated_electrodes", "n_electrodes", "electrode_numbering")}
     for n in (6, 8, 12, 16):
@@ -188,6 +202,15 @@ def _archive_existing(out: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(out), str(dest))
     print(f"archived the previous pool to {dest}")
+
+
+def _archive_dirs(out: Path) -> list[Path]:
+    """Archived pools, newest first by modification time."""
+    archive = out.parent / "archive"
+    if not archive.is_dir():
+        return []
+    return sorted((d for d in archive.iterdir() if d.is_dir()),
+                  key=lambda d: d.stat().st_mtime, reverse=True)
 
 
 def _find_prior_asset(out: Path, name: str) -> Path | None:
@@ -234,7 +257,8 @@ def _config_id(cfg: SimulatorConfig) -> str:
     keys = ("n_channels", "n_selected", "carrier", "stimulation_rate_hz",
             "envelope_cutoff_hz", "interaction_decay_db", "synchronization",
             "low_freq", "high_freq", "spacing",
-            "n_electrodes", "deactivated_electrodes", "electrode_numbering")
+            "n_electrodes", "deactivated_electrodes", "electrode_numbering",
+            "place_map_hz")
     g = vars(cfg)
     blob = json.dumps({k: g.get(k) for k in keys}, sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()[:10]
@@ -433,6 +457,23 @@ def main() -> int:
     # directory. A pool without them silently breaks the channel check and
     # the balance staircase - the balance measurement this pool's own levels
     # are built on. Carry them forward from the pool being replaced.
+    # The self-measured map's stimuli travel with the pool too. They are
+    # generated separately and are numerous, so they are carried as a set
+    # rather than named one by one - a rebuild that drops them leaves the app
+    # offering a mapping test whose audio has gone.
+    prior_pool = out.parent / "pool"
+    carried = 0
+    for src_dir in (prior_pool, *_archive_dirs(out)):
+        if not (src_dir / "mapping.json").is_file() or src_dir == out:
+            continue
+        for f in list(src_dir.glob("map_*.wav")) + [src_dir / "mapping.json"]:
+            if not (out / f.name).exists():
+                shutil.copy2(f, out / f.name)
+                carried += 1
+        break
+    if carried:
+        print(f"  carried forward {carried} mapping stimuli")
+
     for asset in ("channel_check.wav", "balance_source.wav"):
         if (out / asset).is_file():
             continue

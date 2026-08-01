@@ -763,10 +763,11 @@ class TestEqualityMustBeBracketed:
         """'first' means the reference was higher, i.e. the probe sat below."""
         only_above = [{"higher": "second"}, {"higher": "same"}]
         both = [{"higher": "first"}, {"higher": "second"}, {"higher": "same"}]
-        f = lambda rs: (any(r["higher"] == "first" for r in rs)
-                        and any(r["higher"] == "second" for r in rs))
-        assert f(only_above) is False
-        assert f(both) is True
+        def bracketed(rs):
+            return (any(r["higher"] == "first" for r in rs)
+                    and any(r["higher"] == "second" for r in rs))
+        assert bracketed(only_above) is False
+        assert bracketed(both) is True
 
     def test_the_real_bracketed_reference_from_that_run_still_passes(self, srv):
         """3000 Hz approached from both sides before its equality report."""

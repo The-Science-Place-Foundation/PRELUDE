@@ -105,6 +105,26 @@ class SimulatorConfig:
         resynthesising at the surviving electrodes' physical places. Passing a
         reduced ``n_channels`` instead would reproduce the loss of resolution but
         none of the place mismatch, which is the part a listener notices.
+    place_map_hz:
+        A **measured** frequency-place map for a specific listener, as
+        ``((input_hz, perceived_as_hz), ...)`` knots. Empty means the carriers
+        sit at their own band frequencies, which is the ordinary case.
+
+        When supplied, carriers are warped through it: a band centred at *f* is
+        resynthesised at *g(f)*, so the output lands where that listener
+        actually hears the implant put it. Interpolated piecewise-linearly in
+        log-frequency and held flat outside the measured range - a handful of
+        knots cannot support a fitted curve, and extrapolating a place map
+        invents exactly the kind of plausible structure this domain punishes.
+
+        **This takes precedence over the modelled electrode-place mismatch**,
+        and deliberately so. A measured map is obtained by sending a tone to a
+        real device and asking where it landed, so it already contains that
+        device's allocation table, its electrode positions and whichever
+        contacts are switched off. Composing it with
+        ``deactivated_electrodes`` would count the same displacement twice.
+        Those settings still govern channel count and the n-of-m competition,
+        which a pitch match says nothing about.
     electrode_numbering:
         ``"basal_first"`` (Cochlear: electrode 1 sits at the base and carries the
         *highest* frequency) or ``"apical_first"`` (electrode 1 at the apex,
@@ -127,6 +147,7 @@ class SimulatorConfig:
     n_electrodes: int | None = None
     deactivated_electrodes: tuple[int, ...] = ()
     electrode_numbering: str = "basal_first"
+    place_map_hz: tuple[tuple[float, float], ...] = ()
 
     envelope_method: str = "hilbert"
     envelope_cutoff_hz: float | None = 300.0
@@ -228,6 +249,29 @@ def electrode_to_band_index(electrode: int, n_electrodes: int,
     raise ValueError(f"unknown numbering {numbering!r}")
 
 
+def warp_through_place_map(freqs: np.ndarray,
+                           knots: tuple[tuple[float, float], ...]) -> np.ndarray:
+    """Map frequencies through a measured frequency-place relation.
+
+    Piecewise linear in log-frequency between knots, held flat outside them.
+    Not a fitted curve: a measured map has a handful of points, and a model
+    over a handful of points invents structure it cannot support.
+    """
+    if not knots:
+        return np.asarray(freqs, dtype=float)
+    k = sorted((float(a), float(b)) for a, b in knots)
+    xs = np.log2([a for a, _ in k])
+    ys = np.log2([b for _, b in k])
+    f = np.asarray(freqs, dtype=float)
+    out = np.exp2(np.interp(np.log2(f), xs, ys))
+    # Held flat, i.e. the outermost shift continues unchanged, rather than the
+    # perceived frequency itself being clamped.
+    lo, hi = k[0], k[-1]
+    out = np.where(f < lo[0], f * (lo[1] / lo[0]), out)
+    out = np.where(f > hi[0], f * (hi[1] / hi[0]), out)
+    return out
+
+
 def _surviving_band_indices(config: SimulatorConfig) -> list[int]:
     """Ascending-frequency band indices of the electrodes still in use."""
     dead = {
@@ -326,7 +370,25 @@ def simulate(
     # contacts, but it cannot move them, so a band is delivered at a place that
     # does not correspond to its frequency.
     place_fb = fb
-    if config.deactivated_electrodes:
+    if config.place_map_hz:
+        # A measured map supersedes the modelled electrode displacement: it was
+        # obtained from the real device and already contains it. See the note
+        # on place_map_hz in SimulatorConfig.
+        edges = warp_through_place_map(fb.edges, config.place_map_hz)
+        nyq = sample_rate / 2.0
+        if float(edges.max()) >= nyq:
+            raise ValueError(
+                f"place map pushes a band edge to {edges.max():.0f} Hz, at or "
+                f"above Nyquist ({nyq:.0f} Hz) for sample_rate={sample_rate}. "
+                f"Raise the sample rate or lower high_freq."
+            )
+        place_fb = design_filterbank(
+            sample_rate=sample_rate,
+            n_channels=fb.n_channels,
+            spacing="table",
+            edges=edges,
+        )
+    elif config.deactivated_electrodes:
         full = design_filterbank(
             sample_rate=sample_rate,
             n_channels=config.n_electrodes,

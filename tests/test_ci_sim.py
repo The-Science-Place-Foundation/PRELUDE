@@ -478,3 +478,97 @@ class TestElectrodeDeactivation:
         with pytest.raises(ValueError, match="1-based"):
             SimulatorConfig(n_channels=21, n_electrodes=22,
                             deactivated_electrodes=(0,))
+
+
+class TestMeasuredPlaceMap:
+    """A measured frequency-place map moves the carriers, not the analysis.
+
+    The analysis bands are what the processor does to the input. The place map
+    is where the listener's device puts the result. Warping the analysis
+    instead would model a different device rather than a different ear.
+    """
+
+    KNOTS = ((500.0, 396.9), (1500.0, 1542.2), (3000.0, 2378.4))
+
+    def test_it_interpolates_between_knots_and_holds_flat_outside(self):
+        from prelude.ci_sim.pipeline import warp_through_place_map
+        got = warp_through_place_map(
+            np.array([500.0, 1500.0, 3000.0]), self.KNOTS)
+        assert got == pytest.approx([396.9, 1542.2, 2378.4], rel=1e-6)
+        # Between knots, monotonic and bounded by them.
+        mid = warp_through_place_map(np.array([800.0]), self.KNOTS)[0]
+        assert 396.9 < mid < 1542.2
+        # Outside, the outermost SHIFT continues - the frequency is not clamped.
+        low = warp_through_place_map(np.array([250.0]), self.KNOTS)[0]
+        assert low == pytest.approx(250.0 * (396.9 / 500.0), rel=1e-6)
+        high = warp_through_place_map(np.array([6000.0]), self.KNOTS)[0]
+        assert high == pytest.approx(6000.0 * (2378.4 / 3000.0), rel=1e-6)
+
+    def test_no_map_is_the_identity(self):
+        from prelude.ci_sim.pipeline import warp_through_place_map
+        f = np.array([300.0, 1000.0, 4000.0])
+        assert warp_through_place_map(f, ()) == pytest.approx(f)
+
+    def test_a_map_changes_the_audio(self, speech_like):
+        plain = simulate(speech_like, 16000, SimulatorConfig(
+            n_channels=8, n_selected=8, high_freq=7000.0, seed=0))
+        warped = simulate(speech_like, 16000, SimulatorConfig(
+            n_channels=8, n_selected=8, high_freq=7000.0, seed=0,
+            place_map_hz=self.KNOTS))
+        assert not np.allclose(plain.audio, warped.audio)
+
+    def test_a_downward_map_moves_output_energy_down(self, speech_like):
+        """The listener's measured map is downward, so the output should be."""
+        def centroid(x):
+            X = np.abs(np.fft.rfft(x))
+            f = np.fft.rfftfreq(len(x), 1 / 16000)
+            return float((f * X).sum() / X.sum())
+        plain = simulate(speech_like, 16000, SimulatorConfig(
+            n_channels=8, n_selected=8, high_freq=7000.0, seed=0))
+        warped = simulate(speech_like, 16000, SimulatorConfig(
+            n_channels=8, n_selected=8, high_freq=7000.0, seed=0,
+            place_map_hz=self.KNOTS))
+        assert centroid(warped.audio) < centroid(plain.audio)
+
+    def test_the_electrodogram_is_untouched_by_the_map(self, speech_like):
+        """The map is about where stimulation is HEARD, not what is sent.
+
+        Channel selection and levels happen before resynthesis, so warping the
+        carriers must not disturb them - otherwise the map would be silently
+        changing the device rather than the ear.
+        """
+        base = dict(n_channels=8, n_selected=4, high_freq=7000.0, seed=0)
+        plain = simulate(speech_like, 16000, SimulatorConfig(**base))
+        warped = simulate(speech_like, 16000,
+                          SimulatorConfig(**base, place_map_hz=self.KNOTS))
+        assert np.allclose(plain.electrodogram, warped.electrodogram)
+
+    def test_a_map_that_would_cross_nyquist_is_refused(self, speech_like):
+        upward = ((500.0, 2000.0), (3000.0, 12000.0))
+        with pytest.raises(ValueError, match="Nyquist"):
+            simulate(speech_like, 16000, SimulatorConfig(
+                n_channels=8, n_selected=8, high_freq=7000.0,
+                place_map_hz=upward))
+
+    def test_the_map_takes_precedence_over_modelled_deactivation(self, speech_like):
+        """Both describe the same displacement; composing would double-count.
+
+        A measured map comes from sending a tone to the real device and asking
+        where it landed, so it already contains that device's allocation, its
+        electrode positions and whichever contacts are off.
+        """
+        with_dead = simulate(speech_like, 16000, SimulatorConfig(
+            n_channels=21, n_selected=8, n_electrodes=22,
+            deactivated_electrodes=(2,), high_freq=7000.0, seed=0,
+            place_map_hz=self.KNOTS))
+        without = simulate(speech_like, 16000, SimulatorConfig(
+            n_channels=21, n_selected=8, high_freq=7000.0, seed=0,
+            place_map_hz=self.KNOTS))
+        # Channel count and selection still differ in general, but the carrier
+        # placement is governed by the map alone, so the two agree.
+        assert np.allclose(with_dead.audio, without.audio)
+
+    def test_config_hash_covers_the_map(self):
+        a = SimulatorConfig(n_channels=8, place_map_hz=self.KNOTS)
+        b = SimulatorConfig(n_channels=8)
+        assert a.hash() != b.hash()
