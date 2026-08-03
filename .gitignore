@@ -108,3 +108,4 @@ archive/
 # Exported artifact sets. Participant health information, and the raw records
 # they contain are the primary source for measurements that cannot be repeated.
 private/artifacts/
+private/listen/

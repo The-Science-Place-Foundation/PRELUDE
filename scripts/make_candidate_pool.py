@@ -184,6 +184,32 @@ def candidate_configs() -> list[tuple[str, SimulatorConfig]]:
     return out
 
 
+FREEZE_MARKER = "FROZEN"
+
+
+def _check_frozen(out: Path, force: bool) -> None:
+    """Refuse to rebuild a pool that has been deliberately frozen.
+
+    Judgements only accumulate across sessions sharing a ``pool_id``, and this
+    listener gives about three per sitting against a convergence threshold of
+    twelve. A rebuild therefore costs roughly four evenings of someone else's
+    time, and four rebuilds in one week reset that count to zero four times.
+
+    Freezing is a decision to stop paying that. Override only when the device
+    model itself has changed enough that the current pool is measuring the
+    wrong thing.
+    """
+    marker = out / FREEZE_MARKER
+    if not marker.is_file() or force:
+        return
+    raise SystemExit(
+        f"\n{out}/{FREEZE_MARKER} exists - this pool is frozen.\n\n"
+        f"{marker.read_text().strip()}\n\n"
+        f"Rebuilding resets cross-session pooling to zero. Pass --force if the "
+        f"device model has genuinely changed; otherwise leave it alone."
+    )
+
+
 def _archive_existing(out: Path) -> None:
     """Move any existing pool aside instead of overwriting it.
 
@@ -296,6 +322,9 @@ def main() -> int:
     ap.add_argument("--control-db", type=float, default=3.0,
                     help="level difference for the control pair. Defaults to the "
                          "3 dB gap that confounded the first session.")
+    ap.add_argument("--force", action="store_true",
+                    help="rebuild even if the pool is frozen. Resets "
+                         "cross-session pooling; see FROZEN in the pool.")
     ap.add_argument("--min-distance", type=float, default=0.02,
                     help="drop candidates closer than this to one already kept. "
                          "Deliberately low: it should catch near-duplicates, not "
@@ -303,6 +332,7 @@ def main() -> int:
     args = ap.parse_args()
 
     out = args.output
+    _check_frozen(out, args.force)
     _archive_existing(out)
     out.mkdir(parents=True, exist_ok=True)
     assignment = EarAssignment(implant_ear=Ear(args.implant_ear))
